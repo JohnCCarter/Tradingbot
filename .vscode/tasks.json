@@ -1,0 +1,43 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run test_tradingbot.py",
+            "type": "shell",
+            "command": "bash -c 'source /opt/conda/etc/profile.d/conda.sh && conda activate tradingbot_env && python test_tradingbot.py'",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run tests",
+            "type": "shell",
+            "command": "bash -c 'source /opt/conda/etc/profile.d/conda.sh && conda activate tradingbot_env && pytest'",
+            "group": "test",
+            "presentation": { "reveal": "always" }
+        },
+        {
+            "label": "Lint code",
+            "type": "shell",
+            "command": "bash -c 'source /opt/conda/etc/profile.d/conda.sh && conda activate tradingbot_env && flake8 .'",
+            "group": "test",
+            "presentation": { "reveal": "always" }
+        },
+        {
+            "label": "Check code",
+            "dependsOn": ["Lint code", "Run tests"],
+            "dependsOrder": "sequence"
+        },
+        {
+            "label": "Update environment",
+            "type": "shell",
+            "command": "conda env update -f environment.yml",
+            "presentation": { "reveal": "always" }
+        }
+    ]
+}
