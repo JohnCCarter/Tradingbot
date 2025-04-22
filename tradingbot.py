@@ -14,6 +14,7 @@ import ccxt
 from websockets.sync.client import connect
 import websockets
 from pytz import timezone
+import logging
 
 # Create timezone object once
 LOCAL_TIMEZONE = timezone('Europe/Stockholm')
@@ -37,11 +38,12 @@ with open("config.json") as f:
     config = json.load(f)
 
 # Validate config values
-required_config_keys = ["SYMBOL", "TIMEFRAME", "LIMIT", "EMA_LENGTH", "ATR_MULTIPLIER", "VOLUME_MULTIPLIER", "TRADING_START_HOUR", "TRADING_END_HOUR", "MAX_DAILY_LOSS", "MAX_TRADES_PER_DAY"]
+required_config_keys = ["EXCHANGE", "SYMBOL", "TIMEFRAME", "LIMIT", "EMA_LENGTH", "ATR_MULTIPLIER", "VOLUME_MULTIPLIER", "TRADING_START_HOUR", "TRADING_END_HOUR", "MAX_DAILY_LOSS", "MAX_TRADES_PER_DAY"]
 for key in required_config_keys:
     if key not in config:
         raise ValueError(f"Missing required key '{key}' in config.json")
 
+EXCHANGE_NAME = config["EXCHANGE"].lower()
 SYMBOL = config["SYMBOL"]
 TIMEFRAME = config["TIMEFRAME"]
 LIMIT = config["LIMIT"]
@@ -53,12 +55,35 @@ TRADING_END_HOUR = config["TRADING_END_HOUR"]
 MAX_DAILY_LOSS = config["MAX_DAILY_LOSS"]
 MAX_TRADES_PER_DAY = config["MAX_TRADES_PER_DAY"]
 
-# Initialize exchange
-exchange = ccxt.bitfinex({
-    'apiKey': API_KEY,
-    'secret': API_SECRET
-})
-exchange.nonce = lambda: int(time.time() * 1000)
+# Initialize exchange based on config
+if EXCHANGE_NAME == "bitfinex":
+    API_KEY = os.getenv("API_KEY")
+    API_SECRET = os.getenv("API_SECRET")
+    if not API_KEY or not API_SECRET:
+        raise ValueError("API_KEY and API_SECRET are required for Bitfinex. Please check your environment variables.")
+    exchange = ccxt.bitfinex({
+        'apiKey': API_KEY,
+        'secret': API_SECRET
+    })
+    exchange.nonce = lambda: int(time.time() * 1000)
+elif EXCHANGE_NAME == "coinbase":
+    API_KEY = os.getenv("COINBASE_API_KEY")
+    API_SECRET = os.getenv("COINBASE_API_SECRET")
+    if not API_KEY or not API_SECRET:
+        raise ValueError("COINBASE_API_KEY och COINBASE_API_SECRET krävs för Coinbase. Lägg till dem i din .env-fil.")
+    exchange = ccxt.coinbase({
+        'apiKey': API_KEY,
+        'secret': API_SECRET
+    })
+else:
+    raise ValueError(f"Exchange '{EXCHANGE_NAME}' stöds inte ännu.")
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Utility functions
 
@@ -66,7 +91,7 @@ def fetch_balance():
     try:
         return exchange.fetch_balance()
     except Exception as e:
-        print(f"Error fetching balance: {e}")
+        logging.error(f"Error fetching balance: {e}")
         return None
 
 
@@ -74,13 +99,13 @@ def fetch_market_data(symbol, timeframe, limit):
     try:
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
         if not ohlcv or not all(len(row) == 6 for row in ohlcv):
-            print("Warning: Malformed or incomplete data fetched from API.")
+            logging.warning("Malformed or incomplete data fetched from API.")
             return None
         data = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         data['datetime'] = pd.to_datetime(data['timestamp'], unit='ms', utc=True)
         return data
     except Exception as e:
-        print(f"Error fetching market data: {e}")
+        logging.error(f"Error fetching market data: {e}")
         return None
 
 
@@ -88,10 +113,6 @@ def calculate_indicators(
     data, ema_length, volume_multiplier, trading_start_hour, trading_end_hour
 ):
     try:
-        # print("\n[DEBUG] DataFrame head before indicator calculation:")
-        # print(data.head())
-        # print("[DEBUG] DataFrame info:")
-        # print(data.info())
         required_columns = {'close', 'high', 'low', 'volume'}
         if not required_columns.issubset(data.columns):
             raise ValueError(
@@ -115,7 +136,7 @@ def calculate_indicators(
         data['within_trading_hours'] = data['hour'].between(trading_start_hour, trading_end_hour)
         return data
     except Exception as e:
-        print(f"Error calculating indicators: {e}")
+        logging.error(f"Error calculating indicators: {e}")
         return None
 
 
@@ -131,7 +152,7 @@ def detect_fvg(data, lookback, bullish=True):
 
 def place_order(order_type, symbol, amount, price=None):
     if amount <= 0:
-        print(f"Invalid order amount: {amount}. Amount must be positive.")
+        logging.error(f"Invalid order amount: {amount}. Amount must be positive.")
         return
 
     try:
@@ -140,12 +161,7 @@ def place_order(order_type, symbol, amount, price=None):
         elif order_type == 'sell':
             order = exchange.create_limit_sell_order(symbol, amount, price) if price else exchange.create_market_sell_order(symbol, amount)
 
-        print("\nOrder Information:")
-        print(f"Type: {order_type.capitalize()}")
-        print(f"Symbol: {symbol}")
-        print(f"Amount: {amount}")
-        if price:
-            print(f"Price: {price}")
+        logging.info(f"Order Information: Type: {order_type.capitalize()} Symbol: {symbol} Amount: {amount} Price: {price if price else 'Market'}")
         
         # Visa endast relevanta fält från Order Details
         relevant_details = {
@@ -158,11 +174,9 @@ def place_order(order_type, symbol, amount, price=None):
             'Tidsstämpel': order.get('datetime', 'N/A') if order else 'N/A',
             
         }
-        print("\nOrderdetaljer (förenklade):")
-        for key, value in relevant_details.items():
-            print(f"{key}: {value}")
+        logging.info(f"Orderdetaljer (förenklade): {relevant_details}")
     except Exception as e:
-        print(f"Error placing {order_type} order: {e}")
+        logging.error(f"Error placing {order_type} order: {e}")
 
 
 def get_current_price(symbol):
@@ -171,10 +185,10 @@ def get_current_price(symbol):
         if 'last' in ticker:
             return ticker['last']
         else:
-            print("Warning: 'last' key not found in ticker data.")
+            logging.warning("'last' key not found in ticker data.")
             return None
     except Exception as e:
-        print(f"Error fetching current price: {e}")
+        logging.error(f"Error fetching current price: {e}")
         return None
 
 # WebSocket authentication
@@ -200,13 +214,13 @@ def authenticate_websocket(uri, api_key, api_secret):
                 data = json.loads(message)
                 if isinstance(data, dict) and data.get("event") == "auth" and data.get("status") != "OK":
                     raise Exception("Authentication failed.")
-                print(f"Login successful for user <{data.get('userId')}>.")
+                logging.info(f"Login successful for user <{data.get('userId')}>.")
     except websockets.exceptions.InvalidURI as e:
-        print(f"Invalid WebSocket URI: {e}")
+        logging.error(f"Invalid WebSocket URI: {e}")
     except websockets.exceptions.ConnectionClosedError as e:
-        print(f"WebSocket connection closed unexpectedly: {e}")
+        logging.error(f"WebSocket connection closed unexpectedly: {e}")
     except Exception as e:
-        print(f"WebSocket authentication error: {e}")
+        logging.error(f"WebSocket authentication error: {e}")
 
 
 async def fetch_realtime_data():
@@ -223,20 +237,20 @@ async def fetch_realtime_data():
                     "key": f"trade:1m:{SYMBOL}"
                 }
                 await websocket.send(json.dumps(subscription_message))
-                print("Subscribed to real-time data...")
+                logging.info("Subscribed to real-time data...")
                 async for message in websocket:
                     data = json.loads(message)
                     if isinstance(data, list) and len(data) > 1:
                         return data
         except websockets.exceptions.ConnectionClosed as e:
-            print(f"WebSocket connection closed: {e}. Retrying in {retry_delay} seconds...")
+            logging.error(f"WebSocket connection closed: {e}. Retrying in {retry_delay} seconds...")
             retries += 1
             await asyncio.sleep(retry_delay)
         except Exception as e:
-            print(f"Error fetching real-time data: {e}")
+            logging.error(f"Error fetching real-time data: {e}")
             return None
 
-    print("Max retries reached. Failed to fetch real-time data.")
+    logging.error("Max retries reached. Failed to fetch real-time data.")
     return None
 
 
@@ -244,7 +258,7 @@ def convert_to_local_time(utc_time):
     try:
         return utc_time.astimezone(LOCAL_TIMEZONE)
     except Exception as e:
-        print(f"Error converting time: {e}")
+        logging.error(f"Error converting time: {e}")
         return utc_time
 
 
@@ -255,22 +269,21 @@ def process_realtime_data(raw_data):
         data = pd.DataFrame(candles, columns=columns)
         data['datetime'] = pd.to_datetime(data['timestamp'], unit='ms', utc=True)
         data['local_datetime'] = data['datetime'].apply(convert_to_local_time)
-        print("Structured Data:")
-        print(data.head())
+        logging.info(f"Structured Data: {data.head()}")
         return data
     except Exception as e:
-        print(f"Error processing real-time data: {e}")
+        logging.error(f"Error processing real-time data: {e}")
         return None
 
 
 async def main():
     try:
-        print("Fetching real-time data...")
+        logging.info("Fetching real-time data...")
         realtime_data = await fetch_realtime_data()
         if realtime_data:
             structured_data = process_realtime_data(realtime_data)
             if structured_data is not None:
-                print("Real-time data processing completed.")
+                logging.info("Real-time data processing completed.")
                 # Beräkna indikatorer direkt efter process_realtime_data
                 structured_data = calculate_indicators(
                     structured_data,
@@ -287,9 +300,9 @@ async def main():
                     SYMBOL
                 )
         else:
-            print("Failed to fetch real-time data.")
+            logging.error("Failed to fetch real-time data.")
     except Exception as e:
-        print(f"Error in main function: {e}")
+        logging.error(f"Error in main function: {e}")
 
 
 def execute_trading_strategy(
@@ -302,30 +315,27 @@ def execute_trading_strategy(
 ):
     try:
         if data is None or data.empty:
-            print("Error: Data is invalid or empty. Trading strategy cannot be executed.")
+            logging.error("Data is invalid or empty. Trading strategy cannot be executed.")
             return
         if 'ema' not in data.columns or data['ema'].count() == 0:
-            print("Critical Error: EMA indicator is missing or not calculated correctly. Exiting strategy.")
+            logging.critical("EMA indicator is missing or not calculated correctly. Exiting strategy.")
             return
         if 'high_volume' not in data.columns or data['high_volume'].count() == 0:
-            print(
-                "Critical Error: High volume indicator is missing or not calculated correctly. "
-                "Exiting strategy."
-            )
+            logging.critical("High volume indicator is missing or not calculated correctly. Exiting strategy.")
             return
         if 'atr' not in data.columns or data['atr'].count() == 0:
-            print("Critical Error: ATR indicator is missing or not calculated correctly. Exiting strategy.")
+            logging.critical("ATR indicator is missing or not calculated correctly. Exiting strategy.")
             return
         mean_atr = data['atr'].mean()
         trade_count = 0
         daily_loss = 0
         for index, row in data.iterrows():
             if daily_loss < -max_daily_loss:
-                print(f"[DEBUG] Avbryter: daily_loss ({daily_loss}) < -max_daily_loss ({-max_daily_loss})")
+                logging.debug(f"Avbryter: daily_loss ({daily_loss}) < -max_daily_loss ({-max_daily_loss})")
                 break
             # ATR-villkor: endast köp/sälj om ATR är tillräckligt hög
             if row['atr'] <= atr_multiplier * mean_atr:
-                print(f"[DEBUG] Skippad rad {index}: ATR {row['atr']} <= {atr_multiplier} * mean_ATR {mean_atr}")
+                logging.debug(f"Skippad rad {index}: ATR {row['atr']} <= {atr_multiplier} * mean_ATR {mean_atr}")
                 continue
             bull_fvg_high, bull_fvg_low = detect_fvg(data.iloc[:index+1], lookback, bullish=True)
             bear_fvg_high, bear_fvg_low = detect_fvg(data.iloc[:index+1], lookback, bullish=False)
@@ -343,23 +353,23 @@ def execute_trading_strategy(
                 row['high_volume'] and
                 row['within_trading_hours']
             )
-            print(f"[DEBUG] Rad {index}: close={row['close']}, ema={row['ema']}, high_volume={row['high_volume']}, within_trading_hours={row['within_trading_hours']}, bull_fvg_high={bull_fvg_high}, bull_fvg_low={bull_fvg_low}, bear_fvg_high={bear_fvg_high}, bear_fvg_low={bear_fvg_low}")
-            print(f"[DEBUG] long_condition={long_condition}, short_condition={short_condition}")
+            logging.debug(f"Rad {index}: close={row['close']}, ema={row['ema']}, high_volume={row['high_volume']}, within_trading_hours={row['within_trading_hours']}, bull_fvg_high={bull_fvg_high}, bull_fvg_low={bull_fvg_low}, bear_fvg_high={bear_fvg_high}, bear_fvg_low={bear_fvg_low}")
+            logging.debug(f"long_condition={long_condition}, short_condition={short_condition}")
             if long_condition and trade_count < max_trades_per_day:
-                print(f"[DEBUG] Lägger KÖP-order på rad {index}")
+                logging.info(f"Lägger KÖP-order på rad {index}")
                 trade_count += 1
                 place_order('buy', symbol, 0.001, row['close'])
             if short_condition and trade_count < max_trades_per_day:
-                print(f"[DEBUG] Lägger SÄLJ-order på rad {index}")
+                logging.info(f"Lägger SÄLJ-order på rad {index}")
                 trade_count += 1
                 place_order('sell', symbol, 0.001, row['close'])
     except Exception as e:
-        print(f"Error executing trading strategy: {e}")
+        logging.error(f"Error executing trading strategy: {e}")
 
 # Signal handling
 
 def signal_handler(sig, frame):
-    print("\nExiting program...")
+    logging.info("\nExiting program...")
     exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -376,11 +386,11 @@ def run_backtest(symbol, timeframe, limit, ema_length, volume_multiplier, tradin
     """
     data = fetch_market_data(symbol, timeframe, limit)
     if data is None or data.empty:
-        print("Ingen historisk data kunde hämtas för backtest.")
+        logging.error("Ingen historisk data kunde hämtas för backtest.")
         return
     data = calculate_indicators(data, ema_length, volume_multiplier, trading_start_hour, trading_end_hour)
     if data is None:
-        print("Kunde inte beräkna indikatorer för backtest.")
+        logging.error("Kunde inte beräkna indikatorer för backtest.")
         return
     trades = []
     trade_count = 0
@@ -411,30 +421,30 @@ def run_backtest(symbol, timeframe, limit, ema_length, volume_multiplier, tradin
             trade_count += 1
             trades.append({'type': 'buy', 'price': row['close'], 'index': index})
             if print_orders:
-                print(f"[BACKTEST] BUY @ {row['close']} (index {index})")
+                logging.info(f"[BACKTEST] BUY @ {row['close']} (index {index})")
         if short_condition and trade_count < max_trades_per_day:
             trade_count += 1
             trades.append({'type': 'sell', 'price': row['close'], 'index': index})
             if print_orders:
-                print(f"[BACKTEST] SELL @ {row['close']} (index {index})")
-    print(f"[BACKTEST] Antal trades: {len(trades)}")
+                logging.info(f"[BACKTEST] SELL @ {row['close']} (index {index})")
+    logging.info(f"[BACKTEST] Antal trades: {len(trades)}")
     if trades:
-        print(f"[BACKTEST] Första trade: {trades[0]}")
-        print(f"[BACKTEST] Sista trade: {trades[-1]}")
+        logging.info(f"[BACKTEST] Första trade: {trades[0]}")
+        logging.info(f"[BACKTEST] Sista trade: {trades[-1]}")
     else:
-        print("[BACKTEST] Inga trades genererades.")
+        logging.info("[BACKTEST] Inga trades genererades.")
     if save_to_file and trades:
         import json, csv
         if save_to_file.endswith('.json'):
             with open(save_to_file, 'w') as f:
                 json.dump(trades, f, indent=2)
-            print(f"[BACKTEST] Trades sparade till {save_to_file} (JSON)")
+            logging.info(f"[BACKTEST] Trades sparade till {save_to_file} (JSON)")
         elif save_to_file.endswith('.csv'):
             with open(save_to_file, 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=trades[0].keys())
                 writer.writeheader()
                 writer.writerows(trades)
-            print(f"[BACKTEST] Trades sparade till {save_to_file} (CSV)")
+            logging.info(f"[BACKTEST] Trades sparade till {save_to_file} (CSV)")
         else:
-            print("[BACKTEST] Okänt filformat. Ange .json eller .csv.")
+            logging.warning("[BACKTEST] Okänt filformat. Ange .json eller .csv.")
     return trades

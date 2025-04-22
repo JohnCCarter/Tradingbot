@@ -5,18 +5,44 @@ from tradingbot import (
     fetch_market_data, TIMEFRAME, LIMIT, run_backtest
 )
 import pandas as pd
+import logging
+import ccxt
+import os
 
+# Lista på korrekta Bitfinex paper trading-symboler
+PAPER_SYMBOLS = [
+    "testxaut:testusd",
+    "testeth:testusd",
+    "testavax:testusd",
+    "testdoge:testusd",
+    "testxtz:testusd",
+    "testalgo:testusd",
+    "testnear:testusd",
+    "testfil:testusd",
+    "testada:testusd",
+    "testltc:testusd",
+    "testapt:testusd",
+    "testeos:testusd",
+    "testbtc:testusdt",
+    "testmatic:testusd",
+    "testmatic:testusdt",
+    "testdot:testusd",
+    "testsol:testusd",
+]
 
-def test_trading_operations():
+import pytest
+
+@pytest.mark.parametrize("symbol", PAPER_SYMBOLS)
+def test_trading_operations(symbol):
     # Test buy order
-    place_order('buy', SYMBOL, 0.001)
+    place_order('buy', symbol, 0.001)
     # Test sell order
-    place_order('sell', SYMBOL, 0.001)
+    place_order('sell', symbol, 0.001)
     # Test limit orders
-    current_price = get_current_price(SYMBOL)
+    current_price = get_current_price(symbol)
     if current_price is not None and isinstance(current_price, (int, float)):
-        place_order('buy', SYMBOL, 0.001, current_price - 10)
-        place_order('sell', SYMBOL, 0.001, current_price + 10)
+        place_order('buy', symbol, 0.001, current_price - 10)
+        place_order('sell', symbol, 0.001, current_price + 10)
 
 
 def test_config_and_strategy():
@@ -42,16 +68,12 @@ def test_config_and_strategy():
 
 
 def test_execute_trading_strategy_with_live_data():
-    print("\n[TEST] Hämtar marknadsdata och kör strategi på riktigt (paper account)...")
+    logging.info("[TEST] Hämtar marknadsdata och kör strategi på riktigt (paper account)...")
     data = fetch_market_data(SYMBOL, TIMEFRAME, LIMIT)
     assert data is not None and not data.empty, "Kunde inte hämta marknadsdata."
-    # print("\n[DEBUG] DataFrame head before indicator calculation:")
-    # print(data.head())
-    # print("[DEBUG] DataFrame info:")
-    # print(data.info())
     data = calculate_indicators(data, EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR)
     assert data is not None, "Kunde inte beräkna indikatorer."
-    print("[TEST] Kör execute_trading_strategy (detta kan skapa köp/sälj på ditt paper account)...")
+    logging.info("[TEST] Kör execute_trading_strategy (detta kan skapa köp/sälj på ditt paper account)...")
     execute_trading_strategy(
         data,
         MAX_TRADES_PER_DAY,
@@ -59,20 +81,30 @@ def test_execute_trading_strategy_with_live_data():
         ATR_MULTIPLIER,
         SYMBOL
     )
-    print("[TEST] Klart! Kontrollera ditt Bitfinex paper account för utförda ordrar.")
+    logging.info("[TEST] Klart! Kontrollera ditt Bitfinex paper account för utförda ordrar.")
 
 
 def test_run_backtest():
-    print("\n[TEST] Kör backtest på historisk data...")
-    trades = run_backtest(SYMBOL, TIMEFRAME, LIMIT, print_orders=True)
+    logging.info("[TEST] Kör backtest på historisk data...")
+    trades = run_backtest(
+        SYMBOL, TIMEFRAME, LIMIT,
+        EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR,
+        MAX_TRADES_PER_DAY, MAX_DAILY_LOSS, ATR_MULTIPLIER,
+        print_orders=True
+    )
     assert trades is not None, "Backtest misslyckades eller inga trades genererades."
-    print("[TEST] Backtest klart!")
+    logging.info("[TEST] Backtest klart!")
 
 
 def test_run_backtest_and_save():
     print("\n[TEST] Kör backtest och sparar resultat till backtest_result.json...")
-    from tradingbot import run_backtest, SYMBOL, TIMEFRAME, LIMIT
-    trades = run_backtest(SYMBOL, TIMEFRAME, LIMIT, print_orders=True, save_to_file="backtest_result.json")
+    from tradingbot import run_backtest, SYMBOL, TIMEFRAME, LIMIT, EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR, MAX_TRADES_PER_DAY, MAX_DAILY_LOSS, ATR_MULTIPLIER
+    trades = run_backtest(
+        SYMBOL, TIMEFRAME, LIMIT,
+        EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR,
+        MAX_TRADES_PER_DAY, MAX_DAILY_LOSS, ATR_MULTIPLIER,
+        print_orders=True, save_to_file="backtest_result.json"
+    )
     assert trades is not None, "Backtest misslyckades eller inga trades genererades."
     print("[TEST] Backtest klart! Resultat sparat i backtest_result.json.")
 
@@ -97,6 +129,33 @@ def force_test_order(order_type='buy', symbol='tTESTBTC:TESTUSD', amount=0.001, 
 # Exempelanrop (avkommentera för att testa):
 # force_test_order('buy')
 # force_test_order('sell')
+
+# Testa Coinbase Advanced Trade sandbox med custom header
+@pytest.mark.skipif(not os.getenv("COINBASE_API_KEY_SANDBOX"), reason="Ingen sandbox-nyckel satt")
+def test_coinbase_sandbox_order():
+    api_key = os.getenv("COINBASE_API_KEY_SANDBOX")
+    api_secret = os.getenv("COINBASE_API_SECRET_SANDBOX")
+    assert api_key and api_secret, "Saknar sandbox-nycklar i .env"
+    sandbox_url = "https://api-sandbox.coinbase.com/api/v3/brokerage"
+    exchange = ccxt.coinbase({
+        'apiKey': api_key,
+        'secret': api_secret,
+        'urls': {'api': sandbox_url},
+        'headers': {'X-Sandbox': 'TRIGGER_ERROR'}  # Byt värde för att testa olika scenarier
+    })
+    # Exempel: testa att hämta balans eller marknadsdata
+    try:
+        balance = exchange.fetch_balance()
+        print("[SANDBOX] Balans:", balance)
+    except Exception as e:
+        print(f"[SANDBOX] Fel vid fetch_balance: {e}")
+    # Exempel: testa orderläggning (byt symbol till en som stöds i sandbox)
+    try:
+        # Byt till en giltig sandbox-symbol om nödvändigt
+        order = exchange.create_market_buy_order('BTC-USD', 0.001)
+        print("[SANDBOX] Orderresultat:", order)
+    except Exception as e:
+        print(f"[SANDBOX] Fel vid orderläggning: {e}")
 
 if __name__ == "__main__":
     from tradingbot import run_backtest
