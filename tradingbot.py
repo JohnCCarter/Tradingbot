@@ -15,6 +15,7 @@ from websockets.sync.client import connect
 import websockets
 from pytz import timezone
 import logging
+import threading
 
 # Create timezone object once
 LOCAL_TIMEZONE = timezone('Europe/Stockholm')
@@ -150,20 +151,46 @@ def detect_fvg(data, lookback, bullish=True):
         return data['high'].iloc[-1], data['low'].iloc[-2]
 
 
-def place_order(order_type, symbol, amount, price=None):
-    if amount <= 0:
-        logging.error(f"Invalid order amount: {amount}. Amount must be positive.")
-        return
+# def monitor_order_status(order_id, symbol, poll_interval=10, max_checks=30):
+#     """
+#     Kontrollerar orderstatus med jämna mellanrum och loggar när ordern är fylld/closed.
+#     """
+#     import time
+#     for i in range(max_checks):
+#         try:
+#             order = exchange.fetch_order(order_id, symbol)
+#             status = order.get('status', 'unknown')
+#             print(f"[ORDER-STATUS] Order-ID: {order_id}, Status: {status}, Fylld mängd: {order.get('filled', 'N/A')}")
+#             if status in ("closed", "filled"):  # 'closed' för Bitfinex, 'filled' för vissa andra
+#                 print(f"[ORDER-STATUS] Order {order_id] är nu utförd!")
+#                 return
+#         except Exception as e:
+#             print(f"[ORDER-STATUS] Fel vid hämtning av orderstatus: {e}")
+#         time.sleep(poll_interval)
+#     print(f"[ORDER-STATUS] Order {order_id} är fortfarande öppen efter {poll_interval*max_checks} sekunder.")
 
+
+def place_order(order_type, symbol, amount, price=None):
+    print(f"[DEBUG] Försöker lägga {order_type}-order: symbol={symbol}, amount={amount}, price={price}")
+    if amount <= 0:
+        print(f"Invalid order amount: {amount}. Amount must be positive.")
+        return
     try:
         if order_type == 'buy':
+            print("[DEBUG] Anropar create_limit_buy_order eller create_market_buy_order...")
             order = exchange.create_limit_buy_order(symbol, amount, price) if price else exchange.create_market_buy_order(symbol, amount)
         elif order_type == 'sell':
+            print("[DEBUG] Anropar create_limit_sell_order eller create_market_sell_order...")
             order = exchange.create_limit_sell_order(symbol, amount, price) if price else exchange.create_market_sell_order(symbol, amount)
-
-        logging.info(f"Order Information: Type: {order_type.capitalize()} Symbol: {symbol} Amount: {amount} Price: {price if price else 'Market'}")
-        
-        # Visa endast relevanta fält från Order Details
+        else:
+            print(f"[DEBUG] Okänt ordertyp: {order_type}")
+            return
+        print("\nOrder Information:")
+        print(f"Type: {order_type.capitalize()}")
+        print(f"Symbol: {symbol}")
+        print(f"Amount: {amount}")
+        if price:
+            print(f"Price: {price}")
         relevant_details = {
             'Order-ID': order.get('id', 'N/A') if order else 'N/A',
             'Status': order.get('status', 'N/A') if order else 'N/A',
@@ -172,11 +199,16 @@ def place_order(order_type, symbol, amount, price=None):
             'Utförd mängd': order.get('filled', 'N/A') if order else 'N/A',
             'Ordertyp': order.get('type', 'N/A') if order else 'N/A',
             'Tidsstämpel': order.get('datetime', 'N/A') if order else 'N/A',
-            
         }
-        logging.info(f"Orderdetaljer (förenklade): {relevant_details}")
+        print("\nOrderdetaljer (förenklade):")
+        for key, value in relevant_details.items():
+            print(f"{key}: {value}")
+        # Starta övervakning av orderstatus (kommenterad, vi använder nu WebSocket)
+        # if order and order.get('id'):
+        #     monitor_order_status(order.get('id'), symbol)
     except Exception as e:
-        logging.error(f"Error placing {order_type} order: {e}")
+        print(f"[DEBUG] Fel vid orderläggning: {e}")
+        print(f"Error placing {order_type} order: {e}")
 
 
 def get_current_price(symbol):
@@ -448,3 +480,47 @@ def run_backtest(symbol, timeframe, limit, ema_length, volume_multiplier, tradin
         else:
             logging.warning("[BACKTEST] Okänt filformat. Ange .json eller .csv.")
     return trades
+
+async def listen_order_updates():
+    import websockets
+    import json
+    import hmac
+    import hashlib
+    import time as time_mod
+    API_KEY = os.getenv("API_KEY")
+    API_SECRET = os.getenv("API_SECRET")
+    def get_auth_payload():
+        nonce = str(int(time_mod.time() * 1000))
+        auth_payload = f'AUTH{nonce}'
+        signature = hmac.new(
+            API_SECRET.encode(),
+            auth_payload.encode(),
+            hashlib.sha384
+        ).hexdigest()
+        return {
+            "event": "auth",
+            "apiKey": API_KEY,
+            "authSig": signature,
+            "authPayload": auth_payload,
+            "authNonce": nonce
+        }
+    uri = "wss://api.bitfinex.com/ws/2"
+    async with websockets.connect(uri) as ws:
+        await ws.send(json.dumps(get_auth_payload()))
+        print("[WS] Skickade auth-meddelande, väntar på order-event...")
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg)
+            if isinstance(data, list) and len(data) > 1 and data[1] == 'oc':
+                order_info = data[2]
+                status = order_info[13]
+                order_id = order_info[0]
+                print(f"[WS-ORDER] Order-ID: {order_id}, Status: {status}")
+            elif isinstance(data, dict) and data.get("event") == "auth":
+                if data.get("status") == "OK":
+                    print("[WS] Autentisering OK!")
+                else:
+                    print("[WS] Autentisering misslyckades:", data)
+
+# Starta WebSocket-lyssnare i bakgrunden när boten startar
+threading.Thread(target=lambda: asyncio.run(listen_order_updates()), daemon=True).start()

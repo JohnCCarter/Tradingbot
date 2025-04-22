@@ -1,15 +1,27 @@
 import pytest
 from tradingbot import (
-    place_order, get_current_price, calculate_indicators, execute_trading_strategy, convert_to_local_time,
-    SYMBOL, EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR, ATR_MULTIPLIER, MAX_TRADES_PER_DAY, MAX_DAILY_LOSS,
-    fetch_market_data, TIMEFRAME, LIMIT, run_backtest
+    place_order,
+    get_current_price,
+    calculate_indicators,
+    execute_trading_strategy,
+    SYMBOL,
+    EMA_LENGTH,
+    VOLUME_MULTIPLIER,
+    TRADING_START_HOUR,
+    TRADING_END_HOUR,
+    ATR_MULTIPLIER,
+    MAX_TRADES_PER_DAY,
+    MAX_DAILY_LOSS,
+    fetch_market_data,
+    TIMEFRAME,
+    LIMIT,
+    run_backtest
 )
-import pandas as pd
 import logging
 import ccxt
 import os
+import json
 
-# Lista på korrekta Bitfinex paper trading-symboler
 PAPER_SYMBOLS = [
     "testxaut:testusd",
     "testeth:testusd",
@@ -30,41 +42,14 @@ PAPER_SYMBOLS = [
     "testsol:testusd",
 ]
 
-import pytest
-
 @pytest.mark.parametrize("symbol", PAPER_SYMBOLS)
 def test_trading_operations(symbol):
-    # Test buy order
     place_order('buy', symbol, 0.001)
-    # Test sell order
     place_order('sell', symbol, 0.001)
-    # Test limit orders
     current_price = get_current_price(symbol)
     if current_price is not None and isinstance(current_price, (int, float)):
         place_order('buy', symbol, 0.001, current_price - 10)
         place_order('sell', symbol, 0.001, current_price + 10)
-
-
-def test_config_and_strategy():
-    # Skapa en dummy-DataFrame för att testa strategin
-    dummy_data = pd.DataFrame({
-        'timestamp': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] * 10,
-        'open': [100]*100,
-        'high': [110]*100,
-        'low': [90]*100,
-        'close': [100 + i for i in range(100)],
-        'volume': [1.0]*100,
-        'datetime': pd.date_range('2025-04-16', periods=100, freq='h', tz='UTC')
-    })
-    dummy_data['local_datetime'] = dummy_data['datetime'].apply(convert_to_local_time)
-    dummy_data = calculate_indicators(dummy_data, EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR)
-    execute_trading_strategy(
-        dummy_data,
-        MAX_TRADES_PER_DAY,
-        MAX_DAILY_LOSS,
-        ATR_MULTIPLIER,
-        SYMBOL
-    )
 
 
 def test_execute_trading_strategy_with_live_data():
@@ -98,7 +83,6 @@ def test_run_backtest():
 
 def test_run_backtest_and_save():
     print("\n[TEST] Kör backtest och sparar resultat till backtest_result.json...")
-    from tradingbot import run_backtest, SYMBOL, TIMEFRAME, LIMIT, EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR, MAX_TRADES_PER_DAY, MAX_DAILY_LOSS, ATR_MULTIPLIER
     trades = run_backtest(
         SYMBOL, TIMEFRAME, LIMIT,
         EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR,
@@ -110,11 +94,26 @@ def test_run_backtest_and_save():
 
 
 def test_real_buy_order():
-    print("\n[TEST] Försöker lägga en riktig test-köporder på Bitfinex (paper account)...")
-    from tradingbot import place_order, SYMBOL
-    # Testköp med liten mängd på paper account
+    print("\n[TEST] Lägger en riktig test-köporder på Bitfinex (paper account)...")
     place_order('buy', SYMBOL, 0.001)
-    print("[TEST] Om du ser ordern i ditt Bitfinex paper account fungerar API och orderläggning!")
+    print("[TEST] Kontrollera ditt Bitfinex paper account för utförd köporder!")
+
+
+def test_real_sell_order():
+    print("\n[TEST] Lägger en riktig test-säljorder på Bitfinex (paper account)...")
+    place_order('sell', SYMBOL, 0.001)
+    print("[TEST] Kontrollera ditt Bitfinex paper account för utförd säljorder!")
+
+
+def test_real_limit_orders():
+    print("\n[TEST] Lägger riktiga limit orders på Bitfinex (paper account)...")
+    current_price = get_current_price(SYMBOL)
+    if current_price is not None and isinstance(current_price, (int, float)):
+        place_order('buy', SYMBOL, 0.001, current_price - 10)
+        place_order('sell', SYMBOL, 0.001, current_price + 10)
+        print("[TEST] Kontrollera ditt Bitfinex paper account för utförda limit orders!")
+    else:
+        print("[TEST] Kunde inte hämta aktuellt pris, limit orders testades ej.")
 
 
 def force_test_order(order_type='buy', symbol='tTESTBTC:TESTUSD', amount=0.001, price=None):
@@ -122,7 +121,6 @@ def force_test_order(order_type='buy', symbol='tTESTBTC:TESTUSD', amount=0.001, 
     Lägger alltid en köp- eller säljorder på Bitfinex test-symbolen tTESTBTC:TESTUSD.
     Kan användas för att testa API och orderläggning. Sätt på standby vid behov.
     """
-    from tradingbot import place_order
     print(f"[FORCE TEST ORDER] Försöker lägga en {order_type}-order på {symbol} (amount={amount}, price={price})")
     place_order(order_type, symbol, amount, price)
 
@@ -130,7 +128,6 @@ def force_test_order(order_type='buy', symbol='tTESTBTC:TESTUSD', amount=0.001, 
 # force_test_order('buy')
 # force_test_order('sell')
 
-# Testa Coinbase Advanced Trade sandbox med custom header
 @pytest.mark.skipif(not os.getenv("COINBASE_API_KEY_SANDBOX"), reason="Ingen sandbox-nyckel satt")
 def test_coinbase_sandbox_order():
     api_key = os.getenv("COINBASE_API_KEY_SANDBOX")
@@ -141,37 +138,142 @@ def test_coinbase_sandbox_order():
         'apiKey': api_key,
         'secret': api_secret,
         'urls': {'api': sandbox_url},
-        'headers': {'X-Sandbox': 'TRIGGER_ERROR'}  # Byt värde för att testa olika scenarier
+        'headers': {'X-Sandbox': 'TRIGGER_ERROR'}
     })
-    # Exempel: testa att hämta balans eller marknadsdata
     try:
         balance = exchange.fetch_balance()
         print("[SANDBOX] Balans:", balance)
     except Exception as e:
         print(f"[SANDBOX] Fel vid fetch_balance: {e}")
-    # Exempel: testa orderläggning (byt symbol till en som stöds i sandbox)
     try:
-        # Byt till en giltig sandbox-symbol om nödvändigt
         order = exchange.create_market_buy_order('BTC-USD', 0.001)
         print("[SANDBOX] Orderresultat:", order)
     except Exception as e:
         print(f"[SANDBOX] Fel vid orderläggning: {e}")
 
+def load_config():
+    with open("config.json") as f:
+        return json.load(f)
+
+def execute_trading_strategy_with_debug(
+    data,
+    max_trades_per_day,
+    max_daily_loss,
+    atr_multiplier,
+    symbol,
+    lookback=100
+):
+    import numpy as np
+    import logging
+    if data is None or data.empty:
+        logging.error("Data is invalid or empty. Trading strategy cannot be executed.")
+        return
+    if 'ema' not in data.columns or data['ema'].count() == 0:
+        logging.critical("EMA indicator is missing or not calculated correctly. Exiting strategy.")
+        return
+    if 'high_volume' not in data.columns or data['high_volume'].count() == 0:
+        logging.critical("High volume indicator is missing or not calculated correctly. Exiting strategy.")
+        return
+    if 'atr' not in data.columns or data['atr'].count() == 0:
+        logging.critical("ATR indicator is missing or not calculated correctly. Exiting strategy.")
+        return
+    mean_atr = data['atr'].mean()
+    trade_count = 0
+    daily_loss = 0
+    for index, row in data.iterrows():
+        if daily_loss < -max_daily_loss:
+            logging.debug(f"Avbryter: daily_loss ({daily_loss}) < -max_daily_loss ({-max_daily_loss})")
+            break
+        atr_condition = row['atr'] > atr_multiplier * mean_atr
+        bull_fvg_high, bull_fvg_low = get_fvg(data.iloc[:index+1], lookback, bullish=True)
+        bear_fvg_high, bear_fvg_low = get_fvg(data.iloc[:index+1], lookback, bullish=False)
+        bull_fvg_high_ok = not np.isnan(bull_fvg_high)
+        bear_fvg_high_ok = not np.isnan(bear_fvg_high)
+        long_condition = (
+            bull_fvg_high_ok and
+            row['close'] < bull_fvg_low and
+            row['close'] > row['ema'] and
+            row['high_volume'] and
+            row['within_trading_hours']
+        )
+        short_condition = (
+            bear_fvg_high_ok and
+            row['close'] > bear_fvg_high and
+            row['close'] < row['ema'] and
+            row['high_volume'] and
+            row['within_trading_hours']
+        )
+        # Logga vilka villkor som inte uppfylldes
+        if not (atr_condition and long_condition):
+            reasons = []
+            if not atr_condition:
+                reasons.append("ATR-villkor")
+            if not bull_fvg_high_ok:
+                reasons.append("bull_fvg_high")
+            if not (row['close'] < bull_fvg_low):
+                reasons.append("close < bull_fvg_low")
+            if not (row['close'] > row['ema']):
+                reasons.append("close > ema")
+            if not row['high_volume']:
+                reasons.append("high_volume")
+            if not row['within_trading_hours']:
+                reasons.append("within_trading_hours")
+            if reasons:
+                print(f"[LONG] Rad {index}: Order EJ lagd. Ej uppfyllda villkor: {', '.join(reasons)}")
+        if not (atr_condition and short_condition):
+            reasons = []
+            if not atr_condition:
+                reasons.append("ATR-villkor")
+            if not bear_fvg_high_ok:
+                reasons.append("bear_fvg_high")
+            if not (row['close'] > bear_fvg_high):
+                reasons.append("close > bear_fvg_high")
+            if not (row['close'] < row['ema']):
+                reasons.append("close < ema")
+            if not row['high_volume']:
+                reasons.append("high_volume")
+            if not row['within_trading_hours']:
+                reasons.append("within_trading_hours")
+            if reasons:
+                print(f"[SHORT] Rad {index}: Order EJ lagd. Ej uppfyllda villkor: {', '.join(reasons)}")
+        if atr_condition and long_condition and trade_count < max_trades_per_day:
+            print(f"Lägger KÖP-order på rad {index}")
+            trade_count += 1
+            place_order('buy', symbol, 0.001, row['close'])
+        if atr_condition and short_condition and trade_count < max_trades_per_day:
+            print(f"Lägger SÄLJ-order på rad {index}")
+            trade_count += 1
+            place_order('sell', symbol, 0.001, row['close'])
+
+def get_fvg(data, lookback, bullish=True):
+    # Kopia av detect_fvg från tradingbot.py
+    import numpy as np
+    if len(data) < 2:
+        return np.nan, np.nan
+    if bullish:
+        return data['high'].iloc[-2], data['low'].iloc[-1]
+    else:
+        return data['high'].iloc[-1], data['low'].iloc[-2]
+
 if __name__ == "__main__":
-    from tradingbot import run_backtest
-    # Kör backtest med alla parametrar direkt i testfilen
+    config = load_config()
+    import pprint
+    print("\n[LOGG] Aktiva parametrar vid körning:")
+    pprint.pprint(config)
+    # Ta bort testflaggor och testlogik
+    # Endast strategi och backtest körs
     trades = run_backtest(
-        symbol="tTESTBTC:TESTUSD",
-        timeframe="1h",
-        limit=240,
-        ema_length=10,
-        volume_multiplier=0.1,
-        trading_start_hour=0,
-        trading_end_hour=23,
-        max_trades_per_day=100,
-        max_daily_loss=10000,
-        atr_multiplier=0.1,
-        lookback=10,
+        symbol=config["SYMBOL"],
+        timeframe=config["TIMEFRAME"],
+        limit=config["LIMIT"],
+        ema_length=config["EMA_LENGTH"],
+        volume_multiplier=config["VOLUME_MULTIPLIER"],
+        trading_start_hour=config["TRADING_START_HOUR"],
+        trading_end_hour=config["TRADING_END_HOUR"],
+        max_trades_per_day=config["MAX_TRADES_PER_DAY"],
+        max_daily_loss=config["MAX_DAILY_LOSS"],
+        atr_multiplier=config["ATR_MULTIPLIER"],
+        lookback=config.get("LOOKBACK", 100),
         print_orders=True,
         save_to_file="backtest_result.json"
     )
