@@ -16,6 +16,10 @@ import websockets
 from pytz import timezone
 import logging
 import threading
+import smtplib
+from email.mime.text import MIMEText
+import msal
+import requests
 
 # Create timezone object once
 LOCAL_TIMEZONE = timezone('Europe/Stockholm')
@@ -43,6 +47,17 @@ required_config_keys = ["EXCHANGE", "SYMBOL", "TIMEFRAME", "LIMIT", "EMA_LENGTH"
 for key in required_config_keys:
     if key not in config:
         raise ValueError(f"Missing required key '{key}' in config.json")
+
+# Add stop loss and take profit config
+STOP_LOSS_PERCENT = config.get("STOP_LOSS_PERCENT", 2.0)
+TAKE_PROFIT_PERCENT = config.get("TAKE_PROFIT_PERCENT", 4.0)
+
+EMAIL_NOTIFICATIONS = config.get("EMAIL_NOTIFICATIONS", False)
+EMAIL_SMTP_SERVER = config.get("EMAIL_SMTP_SERVER", "")
+EMAIL_SMTP_PORT = config.get("EMAIL_SMTP_PORT", 587)
+EMAIL_SENDER = config.get("EMAIL_SENDER", "")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+EMAIL_RECEIVER = config.get("EMAIL_RECEIVER", "")
 
 EXCHANGE_NAME = config["EXCHANGE"].lower()
 SYMBOL = config["SYMBOL"]
@@ -170,7 +185,52 @@ def detect_fvg(data, lookback, bullish=True):
 #     print(f"[ORDER-STATUS] Order {order_id} är fortfarande öppen efter {poll_interval*max_checks} sekunder.")
 
 
-def place_order(order_type, symbol, amount, price=None):
+def send_email_notification(subject, body):
+    CLIENT_ID = os.getenv("CLIENT_ID")
+    TENANT_ID = os.getenv("TENANT_ID")
+    CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+    EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+    EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
+    authority = f"https://login.microsoftonline.com/{TENANT_ID}"
+    scope = ["https://graph.microsoft.com/.default"]
+    app = msal.ConfidentialClientApplication(
+        CLIENT_ID, authority=authority, client_credential=CLIENT_SECRET
+    )
+    result = app.acquire_token_for_client(scopes=scope)
+    if "access_token" not in result:
+        logging.error(f"[EMAIL] Kunde inte hämta access token: {result.get('error_description')}")
+        return
+    access_token = result["access_token"]
+    email_msg = {
+        "message": {
+            "subject": subject,
+            "body": {
+                "contentType": "Text",
+                "content": body
+            },
+            "toRecipients": [
+                {
+                    "emailAddress": {
+                        "address": EMAIL_RECEIVER
+                    }
+                }
+            ]
+        },
+        "saveToSentItems": "true"
+    }
+    endpoint = f"https://graph.microsoft.com/v1.0/users/{EMAIL_SENDER}/sendMail"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    response = requests.post(endpoint, headers=headers, json=email_msg)
+    if response.status_code == 202:
+        logging.info("[EMAIL] E-post skickad via Microsoft Graph API!")
+    else:
+        logging.error(f"[EMAIL] Misslyckades att skicka e-post: {response.status_code} {response.text}")
+
+
+def place_order(order_type, symbol, amount, price=None, stop_loss=None, take_profit=None):
     print(f"[DEBUG] Försöker lägga {order_type}-order: symbol={symbol}, amount={amount}, price={price}")
     if amount <= 0:
         print(f"Invalid order amount: {amount}. Amount must be positive.")
@@ -191,6 +251,10 @@ def place_order(order_type, symbol, amount, price=None):
         print(f"Amount: {amount}")
         if price:
             print(f"Price: {price}")
+        if stop_loss:
+            print(f"Stop Loss: {stop_loss}")
+        if take_profit:
+            print(f"Take Profit: {take_profit}")
         relevant_details = {
             'Order-ID': order.get('id', 'N/A') if order else 'N/A',
             'Status': order.get('status', 'N/A') if order else 'N/A',
@@ -203,6 +267,11 @@ def place_order(order_type, symbol, amount, price=None):
         print("\nOrderdetaljer (förenklade):")
         for key, value in relevant_details.items():
             print(f"{key}: {value}")
+        # Skicka e-postnotis om ordern lyckas
+        if EMAIL_NOTIFICATIONS:
+            subject = f"Tradingbot Order: {order_type.upper()} {symbol}"
+            body = f"Ordertyp: {order_type}\nSymbol: {symbol}\nAmount: {amount}\nPrice: {price}\nStop Loss: {stop_loss}\nTake Profit: {take_profit}\nOrderdetaljer: {relevant_details}"
+            send_email_notification(subject, body)
         # Starta övervakning av orderstatus (kommenterad, vi använder nu WebSocket)
         # if order and order.get('id'):
         #     monitor_order_status(order.get('id'), symbol)
@@ -390,11 +459,16 @@ def execute_trading_strategy(
             if long_condition and trade_count < max_trades_per_day:
                 logging.info(f"Lägger KÖP-order på rad {index}")
                 trade_count += 1
-                place_order('buy', symbol, 0.001, row['close'])
+                # Beräkna stop loss och take profit nivåer
+                stop_loss = row['close'] * (1 - STOP_LOSS_PERCENT / 100)
+                take_profit = row['close'] * (1 + TAKE_PROFIT_PERCENT / 100)
+                place_order('buy', symbol, 0.001, row['close'], stop_loss, take_profit)
             if short_condition and trade_count < max_trades_per_day:
                 logging.info(f"Lägger SÄLJ-order på rad {index}")
                 trade_count += 1
-                place_order('sell', symbol, 0.001, row['close'])
+                stop_loss = row['close'] * (1 + STOP_LOSS_PERCENT / 100)
+                take_profit = row['close'] * (1 - TAKE_PROFIT_PERCENT / 100)
+                place_order('sell', symbol, 0.001, row['close'], stop_loss, take_profit)
     except Exception as e:
         logging.error(f"Error executing trading strategy: {e}")
 
