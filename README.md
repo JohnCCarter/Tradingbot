@@ -44,6 +44,47 @@
 - Kontrollera loggar och API-nycklar noggrant.
 - Läs och följ roadmapen nedan för vidareutveckling.
 
+## Starta boten på server/arbetsyta (t.ex. Azure VM)
+
+1. Logga in på din server/VM via SSH:
+   ```bash
+   ssh användare@server-ip
+   ```
+2. Navigera till din Tradingbot-mapp:
+   ```bash
+   cd Tradingbot
+   ```
+3. Aktivera miljön:
+   ```bash
+   conda activate tradingbot_env
+   ```
+4. **Installera screen om det inte redan finns:**
+   ```bash
+   sudo apt-get update
+   sudo apt-get install screen
+   ```
+5. (Rekommenderat) Starta en screen-session så boten fortsätter även om du tappar anslutningen:
+   ```bash
+   screen -S tradingbot
+   ```
+6. Starta boten:
+   ```bash
+   python tradingbot.py
+   ```
+7. Koppla från screen (boten fortsätter köra):
+   - Tryck `Ctrl+A` följt av `D`
+8. Återanslut till din screen-session:
+   ```bash
+   screen -r tradingbot
+   ```
+
+## Tips för drift
+- Kontrollera att din .env och config.json är korrekt ifyllda.
+- Kontrollera loggar och order_status_log.txt för status och felsökning.
+- Boten skickar e-postnotis när order skickas och när den fylls.
+- För att se att boten är igång: `screen -ls` och `screen -r tradingbot`.
+- Stoppa boten med `Ctrl+C` inuti screen-sessionen.
+
 ## Roadmap och TODO
 
 - Utöka testtäckningen för fler marknader och strategier

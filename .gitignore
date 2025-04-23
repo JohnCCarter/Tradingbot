@@ -172,3 +172,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+Miniconda3-latest-Linux-x86_64.sh
+order_status_log.txt
+backtest_result.json
+__pycache__/

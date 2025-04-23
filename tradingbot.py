@@ -19,7 +19,6 @@ import logging
 import threading
 import smtplib
 from email.mime.text import MIMEText
-import msal
 import requests
 
 # Create timezone object once
@@ -574,9 +573,19 @@ async def listen_order_updates():
                 print(f"[WS-ORDER] Order-ID: {order_id}, Status: {status}")
                 logging.info(f"[WS-DEBUG] Fullt orderinfo: {order_info}")
                 logging.info(f"[WS-DEBUG] Status-sträng: {status}")
-                # Skicka e-postnotis vid ALLA orderstatus-ändringar
-                if EMAIL_NOTIFICATIONS:
-                    subject = f"Orderstatus ändrad: {order_id}"
+                # Logga ALLA statusar för felsökning
+                with open("order_status_log.txt", "a") as f:
+                    f.write(f"{datetime.now()}: Order-ID: {order_id}, Status: {status}, Info: {order_info}\n")
+                # Skicka e-postnotis om status börjar med EXECUTED, FILLED, CANCELLED, MODIFIED or CLOSED
+                status_upper = str(status).upper()
+                if EMAIL_NOTIFICATIONS and (
+                    status_upper.startswith("EXECUTED") or
+                    status_upper.startswith("CANCELLED") or
+                    status_upper.startswith("MODIFIED") or
+                    status_upper.startswith("FILLED") or
+                    status_upper.startswith("CLOSED")
+                ):
+                    subject = f"Order status updated: {order_id}"
                     body = f"Order-ID: {order_id}\nStatus: {status}\nOrderinfo: {order_info}"
                     send_email_notification(subject, body)
             elif isinstance(data, dict) and data.get("event") == "auth":
@@ -598,4 +607,12 @@ def print_env_vars():
 if __name__ == "__main__":
     print("[DEBUG] Miljövariabler:")
     print_env_vars()
+    # Starta WebSocket-lyssnare i bakgrunden
+    threading.Thread(target=lambda: asyncio.run(listen_order_updates()), daemon=True).start()
     asyncio.run(main())
+    # Håll programmet igång så att WebSocket-lyssnaren lever
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        print("Avslutar boten...")
