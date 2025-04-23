@@ -1,3 +1,4 @@
+from email.mime.multipart import MIMEMultipart
 import time
 import os
 import json
@@ -53,8 +54,8 @@ STOP_LOSS_PERCENT = config.get("STOP_LOSS_PERCENT", 2.0)
 TAKE_PROFIT_PERCENT = config.get("TAKE_PROFIT_PERCENT", 4.0)
 
 EMAIL_NOTIFICATIONS = config.get("EMAIL_NOTIFICATIONS", False)
-EMAIL_SMTP_SERVER = config.get("EMAIL_SMTP_SERVER", "")
-EMAIL_SMTP_PORT = config.get("EMAIL_SMTP_PORT", 587)
+EMAIL_SMTP_SERVER = config.get("EMAIL_SMTP_SERVER", "smtp.gmail.com")
+EMAIL_SMTP_PORT = config.get("EMAIL_SMTP_PORT", 465)
 EMAIL_SENDER = config.get("EMAIL_SENDER", "")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 EMAIL_RECEIVER = config.get("EMAIL_RECEIVER", "")
@@ -186,49 +187,30 @@ def detect_fvg(data, lookback, bullish=True):
 
 
 def send_email_notification(subject, body):
-    CLIENT_ID = os.getenv("CLIENT_ID")
-    TENANT_ID = os.getenv("TENANT_ID")
-    CLIENT_SECRET = os.getenv("CLIENT_SECRET")
-    EMAIL_SENDER = os.getenv("EMAIL_SENDER")
-    EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
-    authority = f"https://login.microsoftonline.com/{TENANT_ID}"
-    scope = ["https://graph.microsoft.com/.default"]
-    app = msal.ConfidentialClientApplication(
-        CLIENT_ID, authority=authority, client_credential=CLIENT_SECRET
-    )
-    result = app.acquire_token_for_client(scopes=scope)
-    if "access_token" not in result:
-        logging.error(f"[EMAIL] Kunde inte hämta access token: {result.get('error_description')}")
+    if not EMAIL_NOTIFICATIONS:
+        logging.info("[EMAIL] E-postnotifieringar är inaktiverade (EMAIL_NOTIFICATIONS=False).")
         return
-    access_token = result["access_token"]
-    email_msg = {
-        "message": {
-            "subject": subject,
-            "body": {
-                "contentType": "Text",
-                "content": body
-            },
-            "toRecipients": [
-                {
-                    "emailAddress": {
-                        "address": EMAIL_RECEIVER
-                    }
-                }
-            ]
-        },
-        "saveToSentItems": "true"
-    }
-    endpoint = f"https://graph.microsoft.com/v1.0/users/{EMAIL_SENDER}/sendMail"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
-    response = requests.post(endpoint, headers=headers, json=email_msg)
-    if response.status_code == 202:
-        logging.info("[EMAIL] E-post skickad via Microsoft Graph API!")
-    else:
-        logging.error(f"[EMAIL] Misslyckades att skicka e-post: {response.status_code} {response.text}")
 
+    required = [EMAIL_SENDER, EMAIL_RECEIVER, EMAIL_PASSWORD]
+    if not all(required):
+        logging.warning("[EMAIL] E-postinställningar saknas (avsändare, mottagare eller lösenord). Inget mejl skickat.")
+        return
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        msg = MIMEMultipart()
+        msg["From"] = EMAIL_SENDER
+        msg["To"] = EMAIL_RECEIVER
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+        # Använd SMTP_SSL för Gmail (port 465)
+        with smtplib.SMTP_SSL(EMAIL_SMTP_SERVER, int(EMAIL_SMTP_PORT)) as server:
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.send_message(msg)
+        logging.info("[EMAIL] E-post skickad via Gmail SMTP_SSL!")
+    except Exception as e:
+        logging.error(f"[EMAIL] Misslyckades att skicka e-post: {e}")
 
 def place_order(order_type, symbol, amount, price=None, stop_loss=None, take_profit=None):
     print(f"[DEBUG] Försöker lägga {order_type}-order: symbol={symbol}, amount={amount}, price={price}")
@@ -590,6 +572,13 @@ async def listen_order_updates():
                 status = order_info[13]
                 order_id = order_info[0]
                 print(f"[WS-ORDER] Order-ID: {order_id}, Status: {status}")
+                logging.info(f"[WS-DEBUG] Fullt orderinfo: {order_info}")
+                logging.info(f"[WS-DEBUG] Status-sträng: {status}")
+                # Skicka e-postnotis vid ALLA orderstatus-ändringar
+                if EMAIL_NOTIFICATIONS:
+                    subject = f"Orderstatus ändrad: {order_id}"
+                    body = f"Order-ID: {order_id}\nStatus: {status}\nOrderinfo: {order_info}"
+                    send_email_notification(subject, body)
             elif isinstance(data, dict) and data.get("event") == "auth":
                 if data.get("status") == "OK":
                     print("[WS] Autentisering OK!")
@@ -598,3 +587,15 @@ async def listen_order_updates():
 
 # Starta WebSocket-lyssnare i bakgrunden när boten startar
 threading.Thread(target=lambda: asyncio.run(listen_order_updates()), daemon=True).start()
+
+def print_env_vars():
+    import os
+    print("API_KEY:", os.getenv("API_KEY"))
+    print("API_SECRET:", os.getenv("API_SECRET"))
+    print("COINBASE_API_KEY:", os.getenv("COINBASE_API_KEY"))
+    print("COINBASE_API_SECRET:", os.getenv("COINBASE_API_SECRET"))
+
+if __name__ == "__main__":
+    print("[DEBUG] Miljövariabler:")
+    print_env_vars()
+    asyncio.run(main())

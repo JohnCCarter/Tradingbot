@@ -17,8 +17,8 @@
   "STOP_LOSS_PERCENT": 2.0,
   "TAKE_PROFIT_PERCENT": 4.0,
   "EMAIL_NOTIFICATIONS": true,
-  "EMAIL_SMTP_SERVER": "smtp.office365.com",
-  "EMAIL_SMTP_PORT": 587,
-  "EMAIL_SENDER": "saliba.chamoun@hotmail.com",
-  "EMAIL_RECEIVER": "saliba.chamoun@hotmail.com"
+  "EMAIL_SMTP_SERVER": "smtp.gmail.com",
+  "EMAIL_SMTP_PORT": 465,
+  "EMAIL_SENDER": "adelfoi491@gmail.com",
+  "EMAIL_RECEIVER": "adelfoi491@gmail.com"
 }
