@@ -1,3 +1,4 @@
+import ccxt
 import pytest
 from tradingbot import (
     place_order,
@@ -18,7 +19,6 @@ from tradingbot import (
     run_backtest
 )
 import logging
-import ccxt
 import os
 import json
 
@@ -41,6 +41,7 @@ PAPER_SYMBOLS = [
     "testdot:testusd",
     "testsol:testusd",
 ]
+
 
 @pytest.mark.parametrize("symbol", PAPER_SYMBOLS)
 def test_trading_operations(symbol):
@@ -124,9 +125,11 @@ def force_test_order(order_type='buy', symbol='tTESTBTC:TESTUSD', amount=0.001, 
     print(f"[FORCE TEST ORDER] Försöker lägga en {order_type}-order på {symbol} (amount={amount}, price={price})")
     place_order(order_type, symbol, amount, price)
 
+
 # Exempelanrop (avkommentera för att testa):
 # force_test_order('buy')
 # force_test_order('sell')
+
 
 @pytest.mark.skipif(not os.getenv("COINBASE_API_KEY_SANDBOX"), reason="Ingen sandbox-nyckel satt")
 def test_coinbase_sandbox_order():
@@ -151,9 +154,11 @@ def test_coinbase_sandbox_order():
     except Exception as e:
         print(f"[SANDBOX] Fel vid orderläggning: {e}")
 
+
 def load_config():
     with open("config.json") as f:
         return json.load(f)
+
 
 def execute_trading_strategy_with_debug(
     data,
@@ -245,6 +250,7 @@ def execute_trading_strategy_with_debug(
             trade_count += 1
             place_order('sell', symbol, 0.001, row['close'])
 
+
 def get_fvg(data, lookback, bullish=True):
     # Kopia av detect_fvg från tradingbot.py
     import numpy as np
@@ -254,6 +260,7 @@ def get_fvg(data, lookback, bullish=True):
         return data['high'].iloc[-2], data['low'].iloc[-1]
     else:
         return data['high'].iloc[-1], data['low'].iloc[-2]
+
 
 if __name__ == "__main__":
     config = load_config()

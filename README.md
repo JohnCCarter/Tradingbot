@@ -78,6 +78,34 @@
    screen -r tradingbot
    ```
 
+## Arbetsflöde för jobbdator (begränsad miljö)
+
+1. Klona eller uppdatera projektet från GitHub:
+   ```bash
+   git clone <repo-url>
+   # eller om du redan har klonat:
+   git pull
+   ```
+2. Om du inte kan installera Conda/miljöer:
+   - Arbeta med koden, gör ändringar och spara lokalt.
+   - Testa och kör kod som inte kräver extra rättigheter.
+   - Pusha ändringar till GitHub:
+     ```bash
+     git add .
+     git commit -m "Dina ändringar"
+     git push
+     ```
+3. När du är hemma eller på server/VM:
+   - Hämta senaste koden med `git pull`.
+   - Kör och testa boten i full miljö.
+   - Starta boten på server/VM enligt instruktionerna ovan.
+
+**Tips:**
+- Spara aldrig känsliga uppgifter (API-nycklar, lösenord) i koden eller på jobbdatorn.
+- Använd .env.example för att visa vilka miljövariabler som behövs.
+- Använd GitHub eller annan versionshantering för att synka kod mellan datorer.
+- Om du behöver föra över filer manuellt, använd t.ex. e-post, OneDrive eller USB (om tillåtet).
+
 ## Tips för drift
 - Kontrollera att din .env och config.json är korrekt ifyllda.
 - Kontrollera loggar och order_status_log.txt för status och felsökning.

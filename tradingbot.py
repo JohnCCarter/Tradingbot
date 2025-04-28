@@ -1,5 +1,4 @@
 from email.mime.multipart import MIMEMultipart
-import time
 import os
 import json
 import hmac
@@ -19,7 +18,7 @@ import logging
 import threading
 import smtplib
 from email.mime.text import MIMEText
-import requests
+import time
 
 # Create timezone object once
 LOCAL_TIMEZONE = timezone('Europe/Stockholm')
@@ -27,11 +26,6 @@ LOCAL_TIMEZONE = timezone('Europe/Stockholm')
 # Load environment variables
 load_dotenv()
 
-# Constants
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-if not API_SECRET:
-    raise ValueError("API_SECRET is not set. Please check your environment variables.")
 # Constants
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
@@ -166,25 +160,6 @@ def detect_fvg(data, lookback, bullish=True):
         return data['high'].iloc[-1], data['low'].iloc[-2]
 
 
-# def monitor_order_status(order_id, symbol, poll_interval=10, max_checks=30):
-#     """
-#     Kontrollerar orderstatus med jämna mellanrum och loggar när ordern är fylld/closed.
-#     """
-#     import time
-#     for i in range(max_checks):
-#         try:
-#             order = exchange.fetch_order(order_id, symbol)
-#             status = order.get('status', 'unknown')
-#             print(f"[ORDER-STATUS] Order-ID: {order_id}, Status: {status}, Fylld mängd: {order.get('filled', 'N/A')}")
-#             if status in ("closed", "filled"):  # 'closed' för Bitfinex, 'filled' för vissa andra
-#                 print(f"[ORDER-STATUS] Order {order_id] är nu utförd!")
-#                 return
-#         except Exception as e:
-#             print(f"[ORDER-STATUS] Fel vid hämtning av orderstatus: {e}")
-#         time.sleep(poll_interval)
-#     print(f"[ORDER-STATUS] Order {order_id} är fortfarande öppen efter {poll_interval*max_checks} sekunder.")
-
-
 def send_email_notification(subject, body):
     if not EMAIL_NOTIFICATIONS:
         logging.info("[EMAIL] E-postnotifieringar är inaktiverade (EMAIL_NOTIFICATIONS=False).")
@@ -195,9 +170,6 @@ def send_email_notification(subject, body):
         logging.warning("[EMAIL] E-postinställningar saknas (avsändare, mottagare eller lösenord). Inget mejl skickat.")
         return
     try:
-        import smtplib
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
         msg = MIMEMultipart()
         msg["From"] = EMAIL_SENDER
         msg["To"] = EMAIL_RECEIVER
@@ -210,6 +182,7 @@ def send_email_notification(subject, body):
         logging.info("[EMAIL] E-post skickad via Gmail SMTP_SSL!")
     except Exception as e:
         logging.error(f"[EMAIL] Misslyckades att skicka e-post: {e}")
+
 
 def place_order(order_type, symbol, amount, price=None, stop_loss=None, take_profit=None):
     print(f"[DEBUG] Försöker lägga {order_type}-order: symbol={symbol}, amount={amount}, price={price}")
@@ -318,7 +291,7 @@ async def fetch_realtime_data():
                     "channel": "candles",
                     "key": f"trade:1m:{SYMBOL}"
                 }
-                await websocket.send(json.dumps(subscription_message))
+                await websocket.send(subscription_message)
                 logging.info("Subscribed to real-time data...")
                 async for message in websocket:
                     data = json.loads(message)
@@ -537,7 +510,6 @@ def run_backtest(symbol, timeframe, limit, ema_length, volume_multiplier, tradin
     return trades
 
 async def listen_order_updates():
-    import websockets
     import json
     import hmac
     import hashlib
