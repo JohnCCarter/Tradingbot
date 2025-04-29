@@ -1,5 +1,8 @@
 # Start with a base image that supports Python 3.9
-FROM python:3.9-slim
+FROM python:3.9-slim-bookworm
+
+# Upgrade pip and system packages to reduce vulnerabilities
+RUN apt-get update && apt-get upgrade -y && pip install --upgrade pip
 
 # Install system dependencies required for ta-lib
 RUN apt-get update && apt-get install -y \

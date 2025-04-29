@@ -29,8 +29,11 @@ load_dotenv()
 # Constants
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-if not API_KEY or not API_SECRET:
-    raise ValueError("API_KEY and API_SECRET are required. Please check your environment variables.")
+def validate_api_keys(api_key, api_secret, exchange_name=""):
+    if not api_key or not api_secret:
+        raise ValueError(f"API_KEY and API_SECRET are required{f' for {exchange_name}' if exchange_name else ''}. Please check your environment variables.")
+
+validate_api_keys(API_KEY, API_SECRET)
 
 # Load config from config.json
 with open("config.json") as f:
@@ -69,22 +72,22 @@ MAX_TRADES_PER_DAY = config["MAX_TRADES_PER_DAY"]
 if EXCHANGE_NAME == "bitfinex":
     API_KEY = os.getenv("API_KEY")
     API_SECRET = os.getenv("API_SECRET")
-    if not API_KEY or not API_SECRET:
-        raise ValueError("API_KEY and API_SECRET are required for Bitfinex. Please check your environment variables.")
+    validate_api_keys(API_KEY, API_SECRET, "Bitfinex")
     exchange = ccxt.bitfinex({
         'apiKey': API_KEY,
         'secret': API_SECRET
     })
     exchange.nonce = lambda: int(time.time() * 1000)
-elif EXCHANGE_NAME == "coinbase":
-    API_KEY = os.getenv("COINBASE_API_KEY")
-    API_SECRET = os.getenv("COINBASE_API_SECRET")
-    if not API_KEY or not API_SECRET:
-        raise ValueError("COINBASE_API_KEY och COINBASE_API_SECRET krävs för Coinbase. Lägg till dem i din .env-fil.")
-    exchange = ccxt.coinbase({
-        'apiKey': API_KEY,
-        'secret': API_SECRET
-    })
+# Coinbase-kod bortkommenterad nedan
+# elif EXCHANGE_NAME == "coinbase":
+#     API_KEY = os.getenv("COINBASE_API_KEY")
+#     API_SECRET = os.getenv("COINBASE_API_SECRET")
+#     if not API_KEY or not API_SECRET:
+#         raise ValueError("COINBASE_API_KEY och COINBASE_API_SECRET krävs för Coinbase. Lägg till dem i din .env-fil.")
+#     exchange = ccxt.coinbase({
+#         'apiKey': API_KEY,
+#         'secret': API_SECRET
+#     })
 else:
     raise ValueError(f"Exchange '{EXCHANGE_NAME}' stöds inte ännu.")
 
@@ -101,7 +104,7 @@ def fetch_balance():
     try:
         return exchange.fetch_balance()
     except Exception as e:
-        logging.error(f"Error fetching balance: {e}")
+        logging.error(f"py balance: {e}")
         return None
 
 
@@ -282,29 +285,56 @@ async def fetch_realtime_data():
     max_retries = 5
     retry_delay = 5  # seconds
     retries = 0
-
-    while retries < max_retries:
-        try:
-            async with websockets.connect("wss://api.bitfinex.com/ws/2") as websocket:
-                subscription_message = {
-                    "event": "subscribe",
-                    "channel": "candles",
-                    "key": f"trade:1m:{SYMBOL}"
-                }
-                await websocket.send(subscription_message)
-                logging.info("Subscribed to real-time data...")
-                async for message in websocket:
-                    data = json.loads(message)
-                    if isinstance(data, list) and len(data) > 1:
-                        return data
-        except websockets.exceptions.ConnectionClosed as e:
-            logging.error(f"WebSocket connection closed: {e}. Retrying in {retry_delay} seconds...")
-            retries += 1
-            await asyncio.sleep(retry_delay)
-        except Exception as e:
-            logging.error(f"Error fetching real-time data: {e}")
-            return None
-
+    channel_id = None
+    candles = []
+    try:
+        async with websockets.connect("wss://api.bitfinex.com/ws/2") as websocket:
+            subscription_message = {
+                "event": "subscribe",
+                "channel": "candles",
+                "key": f"trade:1m:{SYMBOL}"
+            }
+            await websocket.send(json.dumps(subscription_message))
+            logging.info("Subscribed to real-time data...")
+            while True:
+                message = await websocket.recv()
+                data = json.loads(message)
+                logging.debug(f"WebSocket message: {data}")
+                # Handle subscription confirmation
+                if isinstance(data, dict):
+                    if data.get("event") == "subscribed" and data.get("channel") == "candles":
+                        channel_id = data.get("chanId")
+                        logging.info(f"Subscribed to candles channel with id {channel_id}")
+                    elif data.get("event") in ("info", "conf"):
+                        logging.info(f"Info/conf message: {data}")
+                    elif data.get("event") == "error":
+                        logging.error(f"WebSocket error: {data}")
+                        return None
+                    continue
+                # Ignore heartbeat
+                if isinstance(data, list) and len(data) > 1 and data[1] == "hb":
+                    continue
+                # Only process messages for the correct channel
+                if isinstance(data, list) and (channel_id is None or data[0] == channel_id):
+                    # Snapshot: [chanId, [ [candle1], [candle2], ... ] ]
+                    if isinstance(data[1], list) and isinstance(data[1][0], list):
+                        candles = data[1]
+                        logging.info(f"Received snapshot with {len(candles)} candles.")
+                        # Return snapshot as initial data
+                        return [data[0], candles]
+                    # Update: [chanId, [candle]]
+                    elif isinstance(data[1], list) and isinstance(data[1][0], (int, float)):
+                        candles.append(data[1])
+                        logging.info(f"Received candle update: {data[1]}")
+                        # Return the latest candle as a single-row DataFrame
+                        return [data[0], [data[1]]]
+    except websockets.exceptions.ConnectionClosed as e:
+        logging.error(f"WebSocket connection closed: {e}. Retrying in {retry_delay} seconds...")
+        retries += 1
+        await asyncio.sleep(retry_delay)
+    except Exception as e:
+        logging.error(f"Error fetching real-time data: {e}")
+        return None
     logging.error("Max retries reached. Failed to fetch real-time data.")
     return None
 
@@ -319,7 +349,12 @@ def convert_to_local_time(utc_time):
 
 def process_realtime_data(raw_data):
     try:
-        candles = raw_data[1] if isinstance(raw_data, list) and len(raw_data) > 1 else []
+        if not isinstance(raw_data, list):
+            logging.error(f"process_realtime_data: Skippade icke-lista raw_data: {raw_data}")
+            return None
+        candles = raw_data[1] if len(raw_data) > 1 else []
+        if not candles:
+            logging.warning(f"process_realtime_data: Tomma candles i raw_data: {raw_data}")
         columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
         data = pd.DataFrame(candles, columns=columns)
         data['datetime'] = pd.to_datetime(data['timestamp'], unit='ms', utc=True)
@@ -432,11 +467,22 @@ def signal_handler(sig, frame):
     logging.info("\nExiting program...")
     exit(0)
 
-signal.signal(signal.SIGINT, signal_handler)
-
 # Execute the main function to start the trading bot
 # This is the primary execution flow of the program
-asyncio.run(main())
+if __name__ == "__main__":
+    import signal
+    signal.signal(signal.SIGINT, signal_handler)
+    # print("[DEBUG] Miljövariabler:")
+    # print_env_vars()
+    # Starta WebSocket-lyssnare i bakgrunden
+    threading.Thread(target=lambda: asyncio.run(listen_order_updates()), daemon=True).start()
+    asyncio.run(main())
+    # Håll programmet igång så att WebSocket-lyssnaren lever
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        print("Avslutar boten...")
 
 def run_backtest(symbol, timeframe, limit, ema_length, volume_multiplier, trading_start_hour, trading_end_hour, max_trades_per_day, max_daily_loss, atr_multiplier, lookback=100, print_orders=False, save_to_file=None):
     """
@@ -514,8 +560,11 @@ async def listen_order_updates():
     import hmac
     import hashlib
     import time as time_mod
+    from pytz import timezone
+    from datetime import datetime
     API_KEY = os.getenv("API_KEY")
     API_SECRET = os.getenv("API_SECRET")
+    stockholm = timezone('Europe/Stockholm')
     def get_auth_payload():
         nonce = str(int(time_mod.time() * 1000))
         auth_payload = f'AUTH{nonce}'
@@ -542,12 +591,13 @@ async def listen_order_updates():
                 order_info = data[2]
                 status = order_info[13]
                 order_id = order_info[0]
+                # Skriv tidsstämpel i Europe/Stockholm, alltid korrekt med sommartid
+                now_stockholm = datetime.now(stockholm)
+                with open("order_status_log.txt", "a") as f:
+                    f.write(f"{now_stockholm.strftime('%Y-%m-%d %H:%M:%S.%f')}: Order-ID: {order_id}, Status: {status}, Info: {order_info}\n")
                 print(f"[WS-ORDER] Order-ID: {order_id}, Status: {status}")
                 logging.info(f"[WS-DEBUG] Fullt orderinfo: {order_info}")
                 logging.info(f"[WS-DEBUG] Status-sträng: {status}")
-                # Logga ALLA statusar för felsökning
-                with open("order_status_log.txt", "a") as f:
-                    f.write(f"{datetime.now()}: Order-ID: {order_id}, Status: {status}, Info: {order_info}\n")
                 # Skicka e-postnotis om status börjar med EXECUTED, FILLED, CANCELLED, MODIFIED or CLOSED
                 status_upper = str(status).upper()
                 if EMAIL_NOTIFICATIONS and (
@@ -573,12 +623,14 @@ def print_env_vars():
     import os
     print("API_KEY:", os.getenv("API_KEY"))
     print("API_SECRET:", os.getenv("API_SECRET"))
-    print("COINBASE_API_KEY:", os.getenv("COINBASE_API_KEY"))
-    print("COINBASE_API_SECRET:", os.getenv("COINBASE_API_SECRET"))
+    # print("COINBASE_API_KEY:", os.getenv("COINBASE_API_KEY"))
+    # print("COINBASE_API_SECRET:", os.getenv("COINBASE_API_SECRET"))
 
 if __name__ == "__main__":
-    print("[DEBUG] Miljövariabler:")
-    print_env_vars()
+    import signal
+    signal.signal(signal.SIGINT, signal_handler)
+    # print("[DEBUG] Miljövariabler:")
+    # print_env_vars()
     # Starta WebSocket-lyssnare i bakgrunden
     threading.Thread(target=lambda: asyncio.run(listen_order_updates()), daemon=True).start()
     asyncio.run(main())

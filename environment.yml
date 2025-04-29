@@ -85,3 +85,5 @@ dependencies:
       - zipp==3.21.0
       - websockets
 prefix: /opt/conda/envs/tradingbot_env
+
+

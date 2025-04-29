@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <title>Tradingbot Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; background: #f7f7f7; }
+        h1 { color: #333; }
+        .status { margin-bottom: 1em; }
+        button { margin-right: 1em; }
+        pre { background: #222; color: #eee; padding: 1em; border-radius: 5px; max-height: 300px; overflow-y: auto; }
+        .section { margin-bottom: 2em; }
+    </style>
+</head>
+<body>
+    <h1>Tradingbot Dashboard</h1>
+    <div class="section status">
+        <strong>Status:</strong> <span id="bot-status">Laddar...</span>
+        <button onclick="startBot()">Starta bot</button>
+        <button onclick="stopBot()">Stoppa bot</button>
+    </div>
+    <div class="section">
+        <strong>Saldo:</strong>
+        <pre id="balance">Laddar...</pre>
+    </div>
+    <div class="section">
+        <strong>Senaste loggar:</strong>
+        <pre id="logs">Laddar...</pre>
+    </div>
+    <div class="section">
+        <strong>Senaste ordrar:</strong>
+        <pre id="orders">Laddar...</pre>
+    </div>
+    <div class="section">
+        <strong>Skapa order:</strong>
+        <form id="order-form" onsubmit="return sendOrder();">
+            <label>Typ:
+                <select id="order-type">
+                    <option value="buy">Köp</option>
+                    <option value="sell">Sälj</option>
+                </select>
+            </label>
+            <label>Mängd:
+                <input type="number" id="order-amount" value="0.001" step="0.0001" min="0.0001" required>
+            </label>
+            <label>Pris (valfritt):
+                <input type="number" id="order-price" step="0.01" min="0">
+            </label>
+            <button type="submit">Skicka order</button>
+        </form>
+        <div id="order-result"></div>
+    </div>
+    <div class="section">
+        <strong>Orderhistorik (max 500 rader):</strong>
+        <form id="orderhistory-form" onsubmit="return fetchOrderHistory();">
+            <label>Symbol:
+                <input type="text" id="history-symbol" placeholder="t.ex. tBTCUSD">
+            </label>
+            <label>Datum (YYYY-MM-DD):
+                <input type="text" id="history-date" placeholder="2025-04-29">
+            </label>
+            <button type="submit">Visa orderhistorik</button>
+        </form>
+        <pre id="orderhistory">Laddar...</pre>
+    </div>
+    <div class="section">
+        <strong>Senaste pris:</strong>
+        <span id="realtime-price">Laddar...</span>
+    </div>
+    <div class="section">
+        <strong>Strategi-parametrar (config.json):</strong>
+        <form id="config-form" onsubmit="return saveConfig();"></form>
+            <textarea id="config-json" rows="12" cols="80" style="font-family:monospace;"></textarea><br>
+            <button type="submit">Spara ändringar</button>
+            <span id="config-result"></span>
+        </form>
+    </div>
+    <script>
+    const apiBase = '';
+
+    function updateStatus() {
+        fetch(apiBase + '/status')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('bot-status').textContent = d.bot_running ? 'IGÅNG' : 'STOPPAD';
+            });
+    }
+    function startBot() {
+        fetch(apiBase + '/start', {method: 'POST'})
+            .then(() => setTimeout(updateStatus, 1000));
+    }
+    function stopBot() {
+        fetch(apiBase + '/stop', {method: 'POST'})
+            .then(() => setTimeout(updateStatus, 1000));
+    }
+    function updateBalance() {
+        fetch(apiBase + '/balance')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('balance').textContent = JSON.stringify(d, null, 2);
+            });
+    }
+    function updateLogs() {
+        fetch(apiBase + '/logs')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('logs').textContent = (d.logs || []).join('');
+            });
+    }
+    function updateOrders() {
+        fetch(apiBase + '/orders')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('orders').textContent = (d.orders || []).join('\n');
+            });
+    }
+    function refreshAll() {
+        updateStatus();
+        updateBalance();
+        updateLogs();
+        updateOrders();
+    }
+    setInterval(refreshAll, 5000);
+    refreshAll();
+
+    function sendOrder() {
+        const type = document.getElementById('order-type').value;
+        const amount = document.getElementById('order-amount').value;
+        const price = document.getElementById('order-price').value;
+        const payload = { type, amount };
+        if (price) payload.price = price;
+        fetch(apiBase + '/order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('order-result').textContent = d.success ? d.message : (d.error || 'Fel vid order');
+            updateOrders();
+        });
+        return false;
+    }
+
+    function fetchOrderHistory() {
+        const symbol = document.getElementById('history-symbol').value;
+        const date = document.getElementById('history-date').value;
+        let url = apiBase + '/orderhistory';
+        const params = [];
+        if (symbol) params.push('symbol=' + encodeURIComponent(symbol));
+        if (date) params.push('date=' + encodeURIComponent(date));
+        if (params.length) url += '?' + params.join('&');
+        fetch(url)
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('orderhistory').textContent = (d.orders || []).join('\n');
+            });
+        return false;
+    }
+    // Lägg till initial laddning av orderhistorik
+    fetchOrderHistory();
+
+    function updateRealtimePrice() {
+        fetch(apiBase + '/realtimedata')
+            .then(r => r.json())
+            .then(d => {
+                if (d.price !== undefined && d.price !== null) {
+                    document.getElementById('realtime-price').textContent = d.price + ' (' + d.symbol + ')';
+                } else {
+                    document.getElementById('realtime-price').textContent = 'Ingen data';
+                }
+            });
+    }
+    setInterval(updateRealtimePrice, 5000);
+    updateRealtimePrice();
+
+    function loadConfig() {
+        fetch(apiBase + '/config')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('config-json').value = d.config;
+            });
+    }
+    function saveConfig() {
+        let configText = document.getElementById('config-json').value;
+        let configObj;
+        try {
+            configObj = JSON.parse(configText);
+        } catch (e) {
+            document.getElementById('config-result').textContent = 'Fel: Ogiltig JSON!';
+            return false;
+        }
+        fetch(apiBase + '/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(configObj)
+        })
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('config-result').textContent = d.updated ? 'Sparat!' : 'Fel vid sparande.';
+        });
+        return false;
+    }
+    loadConfig();
+    </script>
+</body>
+</html>

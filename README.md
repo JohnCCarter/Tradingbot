@@ -78,33 +78,43 @@
    screen -r tradingbot
    ```
 
-## Arbetsflöde för jobbdator (begränsad miljö)
+## Arbetsflöde för att köra på både hemdator och jobbdator
 
-1. Klona eller uppdatera projektet från GitHub:
-   ```bash
-   git clone <repo-url>
-   # eller om du redan har klonat:
-   git pull
-   ```
-2. Om du inte kan installera Conda/miljöer:
-   - Arbeta med koden, gör ändringar och spara lokalt.
-   - Testa och kör kod som inte kräver extra rättigheter.
-   - Pusha ändringar till GitHub:
+1. Lägg till och spara din .env-fil på ett säkert ställe (t.ex. på din hemdator eller i en lösenordshanterare). Lägg aldrig .env i repo:t.
+2. På jobbdatorn:
+   - Klona eller uppdatera projektet från GitHub:
+     ```bash
+     git clone <repo-url>
+     # eller om du redan har klonat:
+     git pull
+     ```
+   - Arbeta med koden, gör ändringar och pusha till GitHub:
      ```bash
      git add .
      git commit -m "Dina ändringar"
      git push
      ```
-3. När du är hemma eller på server/VM:
-   - Hämta senaste koden med `git pull`.
-   - Kör och testa boten i full miljö.
-   - Starta boten på server/VM enligt instruktionerna ovan.
+   - Kör endast kod som inte kräver API-nycklar eller känsliga filer.
+3. När du är hemma:
+   - Klona eller uppdatera projektet från GitHub:
+     ```bash
+     git pull
+     ```
+   - Lägg till din .env-fil i projektmappen manuellt på din lokala maskin. **Se till att .env-filen aldrig läggs till i versionshantering (t.ex. Git).**
+   - Skapa och aktivera miljön:
+     ```bash
+     conda env update -f environment.yml
+     conda activate tradingbot_env
+     ```
+   - Starta boten:
+     ```bash
+     python tradingbot.py
+     ```
 
 **Tips:**
-- Spara aldrig känsliga uppgifter (API-nycklar, lösenord) i koden eller på jobbdatorn.
-- Använd .env.example för att visa vilka miljövariabler som behövs.
-- Använd GitHub eller annan versionshantering för att synka kod mellan datorer.
-- Om du behöver föra över filer manuellt, använd t.ex. e-post, OneDrive eller USB (om tillåtet).
+- Spara alltid din .env-fil på ett säkert ställe och kopiera in den när du ska köra boten hemma eller på server.
+- Koden och miljön synkas via GitHub, men .env-filen måste du alltid lägga till manuellt.
+- På jobbdatorn kan du utveckla och testa kod utan att köra boten live.
 
 ## Tips för drift
 - Kontrollera att din .env och config.json är korrekt ifyllda.
