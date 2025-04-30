@@ -4,13 +4,90 @@
     <meta charset="UTF-8">
     <title>Tradingbot Dashboard</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 2em; background: #f7f7f7; }
+        body {
+            font-size: 12px; /* Ändra här så påverkas all text på sidan */
+        }
         h1 { color: #333; }
         .status { margin-bottom: 1em; }
         button { margin-right: 1em; }
-        pre { background: #222; color: #eee; padding: 1em; border-radius: 5px; max-height: 300px; overflow-y: auto; }
-        .section { margin-bottom: 2em; }
+        .section {
+            margin-bottom: 2em;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 1.5em;
+            max-width: 1000px;
+        }
+        table {
+            background: #222;
+            color: #eee;
+            padding: 1em;
+            border-radius: 5px;
+            max-width: 900px;
+            width: 100%;
+            margin-top: 1em;
+            border-collapse: collapse;
+        }
+        th {
+            font-size: 18px;
+            background: #333;
+            padding: 0.5em 1em;
+        }
+        td {
+            font-size: 16px;
+            padding: 0.5em 1em;
+        }
+        .status-executed {
+            color: #2ecc40 !important;
+            font-weight: bold;
+            background: #eaffea !important;
+            border-radius: 4px;
+            border: 1px solid #2ecc40;
+        }
+        .status-canceled {
+            color: #ff4136 !important;
+            font-weight: bold;
+            background: #ffeaea !important;
+            border-radius: 4px;
+            border: 1px solid #ff4136;
+        }
+        .status-other {
+            color: #ffb700 !important;
+            font-weight: bold;
+            background: #fffbe6 !important;
+            border-radius: 4px;
+            border: 1px solid #ffb700;
+        }
+        .card-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 0.5em;
+            display: flex;
+            align-items: center;
+        }
+        .card-title i {
+            margin-right: 0.5em;
+        }
+        .balance-key { font-weight: bold; }
+        .balance-row { border-bottom: 1px solid #444; }
+        @media (max-width: 700px) {
+            table, th, td { font-size: 13px; }
+            .section { padding: 0.5em; }
+        }
+        body, table, th, td {
+    font-size: 15px; /* Ändra till önskad storlek */
+}
+        .scroll-table {
+            display: block;
+            max-height: 350px;
+            overflow-y: auto;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            background: #222;
+        }
     </style>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <h1>Tradingbot Dashboard</h1>
@@ -20,20 +97,69 @@
         <button onclick="stopBot()">Stoppa bot</button>
     </div>
     <div class="section">
-        <strong>Saldo:</strong>
-        <pre id="balance">Laddar...</pre>
+        <div class="card-title"><i>💰</i> Saldo</div>
+        <table id="balance-table"></table>
     </div>
     <div class="section">
-        <strong>Senaste loggar:</strong>
-        <pre id="logs">Laddar...</pre>
+        <div class="card-title"><i>📋</i> Senaste ordrar
+            <span id="orders-summary" style="margin-left:1em;font-size:0.9em;color:#888;"></span>
+        </div>
+        <div class="scroll-table">
+            <table id="orders-table">
+                <thead><tr><th>Tid</th><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
     </div>
     <div class="section">
-        <strong>Senaste ordrar:</strong>
-        <pre id="orders">Laddar...</pre>
+        <div class="card-title"><i>📜</i> Orderhistorik (max 10 rader)
+            <span id="orderhistory-summary" style="margin-left:1em;font-size:0.9em;color:#888;"></span>
+        </div>
+        <form id="orderhistory-form" onsubmit="return fetchOrderHistory();">
+            <label>Symbol:
+                <input type="text" id="history-symbol" placeholder="t.ex. tBTCUSD">
+            </label>
+            <label>Datum (YYYY-MM-DD):
+                <input type="text" id="history-date" placeholder="2025-04-29">
+            </label>
+            <button type="submit">Visa orderhistorik</button>
+        </form>
+        <div class="scroll-table">
+            <table id="orderhistory-table">
+                <thead><tr><th>Tid</th><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="section">
+        <div class="card-title"><i>🟢</i> Aktiva ordrar</div>
+        <table id="openorders-table">
+            <thead><tr><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th><th>Tid</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div class="section">
+        <strong>Senaste pris:</strong>
+        <span id="realtime-price">Laddar...</span>
+    </div>
+    <div class="section">
+        <strong>Strategi-parametrar (config.json):</strong>
+        <form id="config-form" onsubmit="return saveConfig();">
+            <textarea id="config-json" rows="12" cols="80" style="font-family:monospace;"></textarea><br>
+            <button type="submit">Spara ändringar</button>
+            <span id="config-result"></span>
+        </form>
     </div>
     <div class="section">
         <strong>Skapa order:</strong>
         <form id="order-form" onsubmit="return sendOrder();">
+            <label>Symbol:
+                <select id="order-symbol">
+                    <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
+                    <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
+                    <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
+                </select>
+            </label>
             <label>Typ:
                 <select id="order-type">
                     <option value="buy">Köp</option>
@@ -50,30 +176,15 @@
         </form>
         <div id="order-result"></div>
     </div>
-    <div class="section">
-        <strong>Orderhistorik (max 500 rader):</strong>
-        <form id="orderhistory-form" onsubmit="return fetchOrderHistory();">
-            <label>Symbol:
-                <input type="text" id="history-symbol" placeholder="t.ex. tBTCUSD">
-            </label>
-            <label>Datum (YYYY-MM-DD):
-                <input type="text" id="history-date" placeholder="2025-04-29">
-            </label>
-            <button type="submit">Visa orderhistorik</button>
-        </form>
-        <pre id="orderhistory">Laddar...</pre>
-    </div>
-    <div class="section">
-        <strong>Senaste pris:</strong>
-        <span id="realtime-price">Laddar...</span>
-    </div>
-    <div class="section">
-        <strong>Strategi-parametrar (config.json):</strong>
-        <form id="config-form" onsubmit="return saveConfig();"></form>
-            <textarea id="config-json" rows="12" cols="80" style="font-family:monospace;"></textarea><br>
-            <button type="submit">Spara ändringar</button>
-            <span id="config-result"></span>
-        </form>
+    <div class="section" id="price-chart-section">
+        <div class="card-title"><i>📈</i> Prisgraf (senaste 50 värden)
+            <select id="chart-symbol-select" style="margin-left:1em;">
+                <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
+                <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
+                <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
+            </select>
+        </div>
+        <canvas id="priceChart" height="120"></canvas>
     </div>
     <script>
     const apiBase = '';
@@ -97,37 +208,129 @@
         fetch(apiBase + '/balance')
             .then(r => r.json())
             .then(d => {
-                document.getElementById('balance').textContent = JSON.stringify(d, null, 2);
+                const table = document.getElementById('balance-table');
+                table.innerHTML = '';
+                if (!d || typeof d !== 'object') {
+                    table.innerHTML = '<tr><td>Ingen data</td></tr>';
+                    return;
+                }
+                const showCurrencies = ['BTC', 'USD', 'USDT', 'EUR'];
+                let shown = false;
+                if (d.total) {
+                    for (const key of Object.keys(d.total)) {
+                        table.innerHTML += `<tr class='balance-row'><td class='balance-key'>${key} (Total)</td><td>${d.total[key]}</td></tr>`;
+                        shown = true;
+                    }
+                }
+                if (d.free) {
+                    for (const key of Object.keys(d.free)) {
+                        table.innerHTML += `<tr class='balance-row'><td class='balance-key'>${key} (Free)</td><td>${d.free[key]}</td></tr>`;
+                        shown = true;
+                    }
+                }
+                if (!shown) {
+                    table.innerHTML = '<tr><td>Ingen relevant saldo-info</td></tr>';
+                }
             });
     }
-    function updateLogs() {
-        fetch(apiBase + '/logs')
-            .then(r => r.json())
-            .then(d => {
-                document.getElementById('logs').textContent = (d.logs || []).join('');
-            });
+    function parseOrderLine(line) {
+        // Förväntat format: "YYYY-MM-DD HH:MM:SS: Order-ID: 123, Status: EXECUTED, Info: [...]"
+        const match = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?): Order-ID: (\d+), Status: ([^,]+), Info: (.+)$/);
+        if (!match) return null;
+        let info = match[4];
+        let symbol = '', type = '', side = '', price = '', amount = '', infoText = info;
+        try {
+            const arr = JSON.parse(info.replace(/'/g, '"'));
+            symbol = arr[3] || '';
+            type = arr[8] || '';
+            side = (parseFloat(arr[6]) > 0 ? 'buy' : 'sell');
+            price = arr[16] || '';
+            amount = arr[6] || '';
+            infoText = '';
+        } catch (e) {
+            // Om parsning misslyckas, visa info som text
+            infoText = info;
+        }
+        return {
+            time: match[1],
+            orderId: match[2],
+            status: match[3],
+            symbol,
+            type,
+            side,
+            price,
+            amount,
+            infoText
+        };
     }
     function updateOrders() {
+        console.log('updateOrders körs');
         fetch(apiBase + '/orders')
             .then(r => r.json())
             .then(d => {
-                document.getElementById('orders').textContent = (d.orders || []).join('\n');
+                console.log('DATA FRÅN /orders:', d);
+                const tbody = document.getElementById('orders-table').querySelector('tbody');
+                tbody.innerHTML = '';
+                let count = 0;
+                (d.orders || []).forEach(line => {
+                    console.log('ORDER-RAD:', line);
+                    const order = parseOrderLine(line);
+                    if (order) {
+                        let statusClass = 'status-other';
+                        const status = order.status.toUpperCase();
+                        if (status.startsWith('EXECUTED')) statusClass = 'status-executed';
+                        else if (status.startsWith('CANCELED')) statusClass = 'status-canceled';
+                        tbody.innerHTML += `<tr><td>${order.time}</td><td>${order.orderId}</td><td>${order.symbol}</td><td>${order.type}</td><td>${order.side}</td><td>${order.price}</td><td>${order.amount}</td><td class='${statusClass}'>${order.status}</td></tr>`;
+                        if (order.infoText) {
+                            tbody.innerHTML += `<tr><td colspan='8' style='font-size:12px;color:#aaa;'>Info: ${order.infoText}</td></tr>`;
+                        }
+                        count++;
+                    } else {
+                        tbody.innerHTML += `<tr><td colspan='8'>${line}</td></tr>`;
+                    }
+                });
+                document.getElementById('orders-summary').textContent = `Antal: ${count}`;
+            });
+    }
+    function updateOpenOrders() {
+        fetch(apiBase + '/openorders')
+            .then(r => r.json())
+            .then(d => {
+                const tbody = document.getElementById('openorders-table').querySelector('tbody');
+                tbody.innerHTML = '';
+                if (d.open_orders && d.open_orders.length > 0) {
+                    d.open_orders.forEach(order => {
+                        tbody.innerHTML += `<tr>
+                            <td>${order.id || ''}</td>
+                            <td>${order.symbol || ''}</td>
+                            <td>${order.type || ''}</td>
+                            <td>${order.side || ''}</td>
+                            <td>${order.price || ''}</td>
+                            <td>${order.amount || ''}</td>
+                            <td>${order.status || ''}</td>
+                            <td>${order.datetime || ''}</td>
+                        </tr>`;
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="8">Inga aktiva ordrar</td></tr>';
+                }
             });
     }
     function refreshAll() {
         updateStatus();
         updateBalance();
-        updateLogs();
         updateOrders();
+        updateOpenOrders();
     }
     setInterval(refreshAll, 5000);
     refreshAll();
 
     function sendOrder() {
+        const symbol = document.getElementById('order-symbol').value;
         const type = document.getElementById('order-type').value;
         const amount = document.getElementById('order-amount').value;
         const price = document.getElementById('order-price').value;
-        const payload = { type, amount };
+        const payload = { symbol, type, amount };
         if (price) payload.price = price;
         fetch(apiBase + '/order', {
             method: 'POST',
@@ -153,12 +356,33 @@
         fetch(url)
             .then(r => r.json())
             .then(d => {
-                document.getElementById('orderhistory').textContent = (d.orders || []).join('\n');
+                const tbody = document.getElementById('orderhistory-table').querySelector('tbody');
+                tbody.innerHTML = '';
+                let count = 0;
+                (d.orders || []).forEach(line => {
+                    const order = parseOrderLine(line);
+                    if (order) {
+                        let statusClass = 'status-other';
+                        const status = order.status.toUpperCase();
+                        if (status.startsWith('EXECUTED')) statusClass = 'status-executed';
+                        else if (status.startsWith('CANCELED')) statusClass = 'status-canceled';
+                        tbody.innerHTML += `<tr><td>${order.time}</td><td>${order.orderId}</td><td>${order.symbol}</td><td>${order.type}</td><td>${order.side}</td><td>${order.price}</td><td>${order.amount}</td><td class='${statusClass}'>${order.status}</td></tr>`;
+                        if (order.infoText) {
+                            tbody.innerHTML += `<tr><td colspan='8' style='font-size:12px;color:#aaa;'>Info: ${order.infoText}</td></tr>`;
+                        }
+                        count++;
+                    } else {
+                        tbody.innerHTML += `<tr><td colspan='8'>${line}</td></tr>`;
+                    }
+                });
+                document.getElementById('orderhistory-summary').textContent = `Antal: ${count}`;
             });
         return false;
     }
     // Lägg till initial laddning av orderhistorik
     fetchOrderHistory();
+
+    // Ta bort anrop till updatePriceChart i updateRealtimePrice
 
     function updateRealtimePrice() {
         fetch(apiBase + '/realtimedata')
@@ -179,6 +403,9 @@
             .then(r => r.json())
             .then(d => {
                 document.getElementById('config-json').value = d.config;
+            })
+            .catch(e => {
+                document.getElementById('config-result').textContent = 'Fel vid laddning av config: ' + e;
             });
     }
     function saveConfig() {
@@ -197,11 +424,86 @@
         })
         .then(r => r.json())
         .then(d => {
-            document.getElementById('config-result').textContent = d.updated ? 'Sparat!' : 'Fel vid sparande.';
+            document.getElementById('config-result').textContent = d.updated ? 'Sparat!' : (d.error || 'Fel vid sparande.');
+        })
+        .catch(e => {
+            document.getElementById('config-result').textContent = 'Fel vid anrop: ' + e;
         });
         return false;
     }
-    loadConfig();
+    // Ladda config när sidan laddas
+    document.addEventListener('DOMContentLoaded', loadConfig);
+
+    // Live price chart - isolerad och säker med symbolväxling
+    (function() {
+        const chartSection = document.getElementById('price-chart-section');
+        const canvas = document.getElementById('priceChart');
+        const symbolSelect = document.getElementById('chart-symbol-select');
+        if (!chartSection || !canvas || !symbolSelect || typeof Chart === 'undefined') return;
+        let priceData = [];
+        let timeLabels = [];
+        const maxPoints = 50;
+        let currentSymbol = symbolSelect.value;
+        const ctx = canvas.getContext('2d');
+        const priceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Pris',
+                    data: priceData,
+                    borderColor: '#2ecc40',
+                    backgroundColor: 'rgba(46,204,64,0.1)',
+                    tension: 0.2,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { display: false },
+                    y: { beginAtZero: false }
+                }
+            }
+        });
+        function updatePriceChart(newPrice) {
+            const now = new Date();
+            const label = now.toLocaleTimeString();
+            priceData.push(newPrice);
+            timeLabels.push(label);
+            if (priceData.length > maxPoints) {
+                priceData.shift();
+                timeLabels.shift();
+            }
+            priceChart.update();
+        }
+        function resetChart() {
+            priceData.length = 0;
+            timeLabels.length = 0;
+            priceChart.update();
+        }
+        // Hämta pris för vald symbol
+        function pollPriceForChart() {
+            fetch(apiBase + '/realtimedata?symbol=' + encodeURIComponent(currentSymbol))
+                .then(r => r.json())
+                .then(d => {
+                    if (d.price !== undefined && d.price !== null) {
+                        updatePriceChart(d.price);
+                    }
+                })
+                .catch(() => {});
+        }
+        let pollInterval = setInterval(pollPriceForChart, 5000);
+        pollPriceForChart();
+        symbolSelect.addEventListener('change', function() {
+            currentSymbol = symbolSelect.value;
+            resetChart();
+            clearInterval(pollInterval);
+            pollInterval = setInterval(pollPriceForChart, 5000);
+            pollPriceForChart();
+        });
+    })();
     </script>
 </body>
 </html>

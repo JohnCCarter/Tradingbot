@@ -193,12 +193,13 @@ def place_order(order_type, symbol, amount, price=None, stop_loss=None, take_pro
         print(f"Invalid order amount: {amount}. Amount must be positive.")
         return
     try:
+        params = {}
         if order_type == 'buy':
             print("[DEBUG] Anropar create_limit_buy_order eller create_market_buy_order...")
-            order = exchange.create_limit_buy_order(symbol, amount, price) if price else exchange.create_market_buy_order(symbol, amount)
+            order = exchange.create_limit_buy_order(symbol, amount, price, params) if price else exchange.create_market_buy_order(symbol, amount, params)
         elif order_type == 'sell':
             print("[DEBUG] Anropar create_limit_sell_order eller create_market_sell_order...")
-            order = exchange.create_limit_sell_order(symbol, amount, price) if price else exchange.create_market_sell_order(symbol, amount)
+            order = exchange.create_limit_sell_order(symbol, amount, price, params) if price else exchange.create_market_sell_order(symbol, amount, params)
         else:
             print(f"[DEBUG] Okänt ordertyp: {order_type}")
             return

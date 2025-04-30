@@ -67,7 +67,7 @@ def get_orders():
         for line in f:
             if 'EXECUTED' in line or 'CANCELED' in line:
                 orders.append(line.strip())
-    return jsonify({"orders": orders[-150:]})  # Endast utförda/avbrutna ordrar, nu 150
+    return jsonify({"orders": orders[-20:]})  # Endast utförda/avbrutna ordrar, nu 20
 
 @app.route('/orderhistory', methods=['GET'])
 def order_history():
@@ -86,31 +86,31 @@ def order_history():
             if date and not line.startswith(date):
                 continue
             orders.append(line.strip())
-    # Logga antal filtrerade ordrar och parametrar
-    print(f"[DEBUG] /orderhistory symbol={symbol} date={date} -> {len(orders[-150:])} rader returneras")
-    return jsonify({"orders": orders[-150:]})  # Returnera max 150 senaste orderhändelser
+    return jsonify({"orders": orders[-20:]})  # Returnera max 20 senaste orderhändelser
 
 @app.route('/order', methods=['POST'])
 def create_order():
     data = request.json
     order_type = data.get('type')  # 'buy' eller 'sell'
+    symbol = data.get('symbol')
     amount = float(data.get('amount', 0.001))
     price = data.get('price')
     if price is not None:
         price = float(price)
-    from tradingbot import place_order, SYMBOL
+    from tradingbot import place_order
     try:
-        place_order(order_type, SYMBOL, amount, price)
-        return jsonify({"success": True, "message": f"{order_type} order sent."})
+        place_order(order_type, symbol, amount, price)
+        return jsonify({"success": True, "message": f"{order_type} order sent for {symbol}."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/realtimedata', methods=['GET'])
 def realtimatedata():
     from tradingbot import get_current_price, SYMBOL
+    symbol = request.args.get('symbol') or SYMBOL
     try:
-        price = get_current_price(SYMBOL)
-        return jsonify({"symbol": SYMBOL, "price": price})
+        price = get_current_price(symbol)
+        return jsonify({"symbol": symbol, "price": price})
     except Exception as e:
         return jsonify({"error": str(e)}), 150
 
@@ -136,6 +136,35 @@ def root():
 def serve_dashboard():
     dashboard_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard.html')
     return send_file(dashboard_path)
+
+@app.route('/openorders', methods=['GET'])
+def get_open_orders():
+    try:
+        from tradingbot import exchange, SYMBOL
+        #print('[DEBUG] /openorders: Försöker hämta aktiva ordrar från Bitfinex...')
+        open_orders = exchange.private_post_auth_r_orders({})
+        #print(f'[DEBUG] /openorders: API-svar: {open_orders}')
+        result = []
+        for o in open_orders:
+            # print(f'[DEBUG] /openorders: Order: {o}')
+            # Bitfinex returnerar en lista, inte en dict
+            result.append({
+                'id': o[0],
+                'symbol': o[3],
+                'type': o[8],
+                'side': 'buy' if float(o[6]) > 0 else 'sell',
+                'price': o[16],
+                'amount': o[6],
+                'status': o[13],
+                'datetime': o[5],
+            })
+        print(f'[DEBUG] /openorders: Returnerar {len(result)} ordrar')
+        return jsonify({'open_orders': result})
+    except Exception as e:
+        import traceback
+        print(f'[ERROR] /openorders: {e}')
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
