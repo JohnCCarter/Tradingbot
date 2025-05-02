@@ -153,7 +153,7 @@ def retry(max_attempts=3, initial_delay=1):
             for attempt in range(1, max_attempts + 1):
                 try:
                     return func(*args, **kwargs)
-                except Exception as e:
+                except Exception:
                     if attempt == max_attempts:
                         raise
                     _time.sleep(delay)
@@ -310,7 +310,15 @@ def place_order(order_type, symbol, amount, price=None, stop_loss=None, take_pro
         # Skicka e-postnotis om ordern lyckas
         if EMAIL_NOTIFICATIONS:
             subject = f"Tradingbot Order: {order_type.upper()} {symbol}"
-            body = f"Ordertyp: {order_type}\nSymbol: {symbol}\nAmount: {amount}\nPrice: {price}\nStop Loss: {stop_loss}\nTake Profit: {take_profit}\nOrderdetaljer: {relevant_details}"
+            body = (
+                f"Ordertyp: {order_type}\n"
+                f"Symbol: {symbol}\n"
+                f"Amount: {amount}\n"
+                f"Price: {price}\n"
+                f"Stop Loss: {stop_loss}\n"
+                f"Take Profit: {take_profit}\n"
+                f"Orderdetaljer: {relevant_details}"
+            )
             send_email_notification(subject, body)
         # Starta övervakning av orderstatus (kommenterad, vi använder nu WebSocket)
         # if order and order.get('id'):
@@ -352,7 +360,6 @@ def authenticate_websocket(uri, api_key, api_secret):
 
 
 async def fetch_realtime_data():
-    max_retries = 5
     retry_delay = 5  # seconds
     retries = 0
     channel_id = None
@@ -607,11 +614,120 @@ class TradingStrategy:
                 tp = row['close'] * (1 - self.take_profit_pct/100)
                 place_order('sell', self.symbol, 0.001, row['close'], sl, tp)
 
-# Signal handling
 
-def signal_handler(sig, frame):
-    logging.info("\nExiting program...")
-    exit(0)
+async def listen_order_updates():
+    import json
+    import hmac
+    import hashlib
+    import time as time_mod
+    from pytz import timezone
+    from datetime import datetime
+    API_KEY = os.getenv("API_KEY")
+    API_SECRET = os.getenv("API_SECRET")
+    stockholm = timezone('Europe/Stockholm')
+    def get_auth_payload():
+        nonce = str(int(time_mod.time() * 1000))
+        auth_payload = f'AUTH{nonce}'
+        signature = hmac.new(
+            API_SECRET.encode(),
+            auth_payload.encode(),
+            hashlib.sha384
+        ).hexdigest()
+        return {
+            "event": "auth",
+            "apiKey": API_KEY,
+            "authSig": signature,
+            "authPayload": auth_payload,
+            "authNonce": nonce
+        }
+    uri = "wss://api.bitfinex.com/ws/2"
+    async with websockets.connect(uri) as ws:
+        await ws.send(json.dumps(get_auth_payload()))
+        print("[WS] Skickade auth-meddelande, väntar på order-event...")
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg)
+            if isinstance(data, list) and len(data) > 1 and data[1] == 'oc':
+                order_info = data[2]
+                status = order_info[13]
+                order_id = order_info[0]
+                # Skriv tidsstämpel i Europe/Stockholm, alltid korrekt med sommartid
+                now_stockholm = datetime.now(stockholm)
+                with open("order_status_log.txt", "a") as f:
+                    f.write(f"{now_stockholm.strftime('%Y-%m-%d %H:%M:%S.%f')}: Order-ID: {order_id}, Status: {status}, Info: {order_info}\n")
+                print(f"[WS-ORDER] Order-ID: {order_id}, Status: {status}")
+                logging.info(f"[WS-DEBUG] Fullt orderinfo: {order_info}")
+                logging.info(f"[WS-DEBUG] Status-sträng: {status}")
+                # Skicka e-postnotis om status börjar med EXECUTED, FILLED, CANCELLED, MODIFIED or CLOSED
+                status_upper = str(status).upper()
+                if EMAIL_NOTIFICATIONS and (
+                    status_upper.startswith("EXECUTED") or
+                    status_upper.startswith("CANCELLED") or
+                    status_upper.startswith("MODIFIED") or
+                    status_upper.startswith("FILLED") or
+                    status_upper.startswith("CLOSED")
+                ):
+                    subject = f"Order status updated: {order_id}"
+                    body = (
+                        f"Order-ID: {order_id}\n"
+                        f"Status: {status}\n"
+                        f"Orderinfo: {order_info}"
+                    )
+                    send_email_notification(subject, body)
+            elif isinstance(data, dict) and data.get("event") == "auth":
+                if data.get("status") == "OK":
+                    print("[WS] Autentisering OK!")
+                else:
+                    print("[WS] Autentisering misslyckades:", data)
+
+# Starta WebSocket-lyssnare i bakgrunden när boten startar
+def print_env_vars():
+    import os
+    print("API_KEY:", os.getenv("API_KEY"))
+    print("API_SECRET:", os.getenv("API_SECRET"))
+    # print("COINBASE_API_KEY:", os.getenv("COINBASE_API_KEY"))
+    # print("COINBASE_API_SECRET:", os.getenv("COINBASE_API_SECRET"))
+
+# Helper to start WebSocket listener in thread
+def _start_listen_updates():
+    """Wrapper to run listen_order_updates as an asyncio task in a separate thread."""
+    asyncio.run(listen_order_updates())
+
+
+# Health-check endpoint server on port 5000
+
+
+class HealthHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'status': 'ok'}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+
+if __name__ == "__main__":
+    import signal as signal_module
+    signal_module.signal(signal_module.SIGINT, signal_handler)
+    # Starta WebSocket-lyssnare i bakgrunden via wrapper function
+    threading.Thread(
+        target=lambda: socketserver.TCPServer(
+            ('0.0.0.0', 5000), HealthHandler
+        ).serve_forever(),
+        daemon=True
+    ).start()
+    asyncio.run(main())
+    # Håll programmet igång så att WebSocket-lyssnaren lever
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        print("Avslutar boten...")
+
+
 
 def run_backtest(symbol, timeframe, limit, ema_length, volume_multiplier, trading_start_hour, trading_end_hour, max_trades_per_day, max_daily_loss, atr_multiplier, lookback=100, print_orders=False, save_to_file=None):
     """
@@ -683,111 +799,3 @@ def run_backtest(symbol, timeframe, limit, ema_length, volume_multiplier, tradin
         else:
             logging.warning("[BACKTEST] Okänt filformat. Ange .json eller .csv.")
     return trades
-
-async def listen_order_updates():
-    import json
-    import hmac
-    import hashlib
-    import time as time_mod
-    from pytz import timezone
-    from datetime import datetime
-    API_KEY = os.getenv("API_KEY")
-    API_SECRET = os.getenv("API_SECRET")
-    stockholm = timezone('Europe/Stockholm')
-    def get_auth_payload():
-        nonce = str(int(time_mod.time() * 1000))
-        auth_payload = f'AUTH{nonce}'
-        signature = hmac.new(
-            API_SECRET.encode(),
-            auth_payload.encode(),
-            hashlib.sha384
-        ).hexdigest()
-        return {
-            "event": "auth",
-            "apiKey": API_KEY,
-            "authSig": signature,
-            "authPayload": auth_payload,
-            "authNonce": nonce
-        }
-    uri = "wss://api.bitfinex.com/ws/2"
-    async with websockets.connect(uri) as ws:
-        await ws.send(json.dumps(get_auth_payload()))
-        print("[WS] Skickade auth-meddelande, väntar på order-event...")
-        while True:
-            msg = await ws.recv()
-            data = json.loads(msg)
-            if isinstance(data, list) and len(data) > 1 and data[1] == 'oc':
-                order_info = data[2]
-                status = order_info[13]
-                order_id = order_info[0]
-                # Skriv tidsstämpel i Europe/Stockholm, alltid korrekt med sommartid
-                now_stockholm = datetime.now(stockholm)
-                with open("order_status_log.txt", "a") as f:
-                    f.write(f"{now_stockholm.strftime('%Y-%m-%d %H:%M:%S.%f')}: Order-ID: {order_id}, Status: {status}, Info: {order_info}\n")
-                print(f"[WS-ORDER] Order-ID: {order_id}, Status: {status}")
-                logging.info(f"[WS-DEBUG] Fullt orderinfo: {order_info}")
-                logging.info(f"[WS-DEBUG] Status-sträng: {status}")
-                # Skicka e-postnotis om status börjar med EXECUTED, FILLED, CANCELLED, MODIFIED or CLOSED
-                status_upper = str(status).upper()
-                if EMAIL_NOTIFICATIONS and (
-                    status_upper.startswith("EXECUTED") or
-                    status_upper.startswith("CANCELLED") or
-                    status_upper.startswith("MODIFIED") or
-                    status_upper.startswith("FILLED") or
-                    status_upper.startswith("CLOSED")
-                ):
-                    subject = f"Order status updated: {order_id}"
-                    body = f"Order-ID: {order_id}\nStatus: {status}\nOrderinfo: {order_info}"
-                    send_email_notification(subject, body)
-            elif isinstance(data, dict) and data.get("event") == "auth":
-                if data.get("status") == "OK":
-                    print("[WS] Autentisering OK!")
-                else:
-                    print("[WS] Autentisering misslyckades:", data)
-
-# Starta WebSocket-lyssnare i bakgrunden när boten startar
-def print_env_vars():
-    import os
-    print("API_KEY:", os.getenv("API_KEY"))
-    print("API_SECRET:", os.getenv("API_SECRET"))
-    # print("COINBASE_API_KEY:", os.getenv("COINBASE_API_KEY"))
-    # print("COINBASE_API_SECRET:", os.getenv("COINBASE_API_SECRET"))
-
-# Helper to start WebSocket listener in thread
-def _start_listen_updates():
-    """Wrapper to run listen_order_updates as an asyncio task in a separate thread."""
-    asyncio.run(listen_order_updates())
-
-
-# Health-check endpoint server on port 5000
-
-
-class HealthHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'status': 'ok'}).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-
-if __name__ == "__main__":
-    import signal as signal_module
-    signal_module.signal(signal_module.SIGINT, signal_handler)
-    # Starta WebSocket-lyssnare i bakgrunden via wrapper function
-    threading.Thread(
-        target=lambda: socketserver.TCPServer(
-            ('0.0.0.0', 5000), HealthHandler
-        ).serve_forever(),
-        daemon=True
-    ).start()
-    asyncio.run(main())
-    # Håll programmet igång så att WebSocket-lyssnaren lever
-    try:
-        while True:
-            time.sleep(60)
-    except KeyboardInterrupt:
-        print("Avslutar boten...")

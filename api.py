@@ -1,5 +1,4 @@
 from flask import Flask, jsonify, request, send_file, redirect, url_for, Response
-import threading
 import subprocess
 import os
 import logging
@@ -127,7 +126,7 @@ def create_order():
     try:
         place_order(order_type, symbol, amount, price)
         return jsonify({"success": True, "message": f"{order_type} order sent for {symbol}."})
-    except Exception as e:
+    except Exception:
         logger.exception("Error in create_order:")
         return jsonify({"success": False, "error": "Could not place order."}), 400
 
@@ -167,7 +166,7 @@ def serve_dashboard():
 @app.route('/openorders', methods=['GET'])
 def get_open_orders():
     try:
-        from tradingbot import exchange, SYMBOL
+        from tradingbot import exchange
         #print('[DEBUG] /openorders: Försöker hämta aktiva ordrar från Bitfinex...')
         open_orders = exchange.private_post_auth_r_orders({})
         #print(f'[DEBUG] /openorders: API-svar: {open_orders}')
@@ -187,7 +186,7 @@ def get_open_orders():
             })
         print(f'[DEBUG] /openorders: Returnerar {len(result)} ordrar')
         return jsonify({'open_orders': result})
-    except Exception as e:
+    except Exception:
         logger.exception("Error in /openorders:")
         return jsonify({'error': 'Unable to fetch open orders.'}), 500
 

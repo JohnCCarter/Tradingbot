@@ -17,7 +17,6 @@ from tradingbot import (
     TIMEFRAME,
     LIMIT,
     run_backtest,
-    exchange,
     detect_fvg
 )
 import logging
