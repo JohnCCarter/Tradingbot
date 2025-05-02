@@ -25,6 +25,7 @@ from pytz import timezone
 import logging
 import threading
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import time
 import functools
@@ -505,7 +506,9 @@ def process_realtime_data(raw_data):
         data = pd.DataFrame(candles, columns=columns)
         data["datetime"] = pd.to_datetime(data["timestamp"], unit="ms", utc=True)
         data["local_datetime"] = data["datetime"].apply(convert_to_local_time)
-        logging.info(f"Structured Data: {data.head()}")
+        logging.info(
+    f"Structured Data: {data.head()}"
+)
         return data
     except Exception as e:
         logging.error(f"Error processing real-time data: {e}")

@@ -1,1 +1,4 @@
-[flake8]\ndisable_noqa = False\nignore = E,W,F
+[flake8]
+max-line-length = 120
+ignore = E302,E301,E303,E305,E306,E401,F821,F824,E265,W292,E501
+exclude = __pycache__, .git, build, dist
