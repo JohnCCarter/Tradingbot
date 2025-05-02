@@ -758,7 +758,10 @@ def _start_listen_updates():
     """Wrapper to run listen_order_updates as an asyncio task in a separate thread."""
     asyncio.run(listen_order_updates())
 
+
 # Health-check endpoint server on port 5000
+
+
 class HealthHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/health':
@@ -770,14 +773,15 @@ class HealthHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+
 if __name__ == "__main__":
-    import signal
-    signal.signal(signal.SIGINT, signal_handler)
+    import signal as signal_module
+    signal_module.signal(signal_module.SIGINT, signal_handler)
     # Starta WebSocket-lyssnare i bakgrunden via wrapper function
-    threading.Thread(target=_start_listen_updates, daemon=True).start()
-    # Start health-check endpoint server
     threading.Thread(
-        target=lambda: socketserver.TCPServer(('0.0.0.0', 5000), HealthHandler).serve_forever(),
+        target=lambda: socketserver.TCPServer(
+            ('0.0.0.0', 5000), HealthHandler
+        ).serve_forever(),
         daemon=True
     ).start()
     asyncio.run(main())
