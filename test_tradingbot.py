@@ -1,5 +1,5 @@
-import ccxt
 import pytest
+import pandas as pd
 from tradingbot import (
     place_order,
     get_current_price,
@@ -16,11 +16,18 @@ from tradingbot import (
     fetch_market_data,
     TIMEFRAME,
     LIMIT,
-    run_backtest
+    run_backtest,
+    exchange,
+    detect_fvg
 )
 import logging
 import os
 import json
+
+try:
+    import ccxt
+except ImportError:
+    ccxt = None
 
 PAPER_SYMBOLS = [
     "testxaut:testusd",
@@ -131,7 +138,7 @@ def force_test_order(order_type='buy', symbol='tTESTBTC:TESTUSD', amount=0.001, 
 # force_test_order('sell')
 
 
-@pytest.mark.skipif(not os.getenv("COINBASE_API_KEY_SANDBOX"), reason="Ingen sandbox-nyckel satt")
+@pytest.mark.skipif(ccxt is None or not os.getenv("COINBASE_API_KEY_SANDBOX"), reason="ccxt saknas eller ingen sandbox-nyckel satt")
 def test_coinbase_sandbox_order():
     api_key = os.getenv("COINBASE_API_KEY_SANDBOX")
     api_secret = os.getenv("COINBASE_API_SECRET_SANDBOX")
@@ -284,3 +291,85 @@ if __name__ == "__main__":
         print_orders=True,
         save_to_file="backtest_result.json"
     )
+
+
+class DummyExchange:
+    def fetch_ohlcv(self, symbol, timeframe, limit):
+        return [[1, 10, 15, 5, 12, 100], [2, 11, 16, 6, 13, 200]]
+    def fetch_ticker(self, symbol):
+        return {'last': 123.4}
+    def create_market_buy_order(self, symbol, amount, params=None):
+        return {'id': 'm1', 'status': 'open', 'price': None, 'amount': amount, 'filled': 0, 'type': 'market'}
+    def create_limit_buy_order(self, symbol, amount, price, params=None):
+        return {'id': 'l1', 'status': 'open', 'price': price, 'amount': amount, 'filled': 0, 'type': 'limit'}
+    def create_market_sell_order(self, symbol, amount, params=None):
+        return {'id': 'm2', 'status': 'open', 'price': None, 'amount': amount, 'filled': 0, 'type': 'market'}
+    def create_limit_sell_order(self, symbol, amount, price, params=None):
+        return {'id': 'l2', 'status': 'open', 'price': price, 'amount': amount, 'filled': 0, 'type': 'limit'}
+
+@pytest.fixture(autouse=True)
+def patch_exchange(monkeypatch):
+    dummy = DummyExchange()
+    monkeypatch.setattr('tradingbot.exchange', dummy)
+    return dummy
+
+def test_fetch_market_data_returns_dataframe():
+    df = fetch_market_data('SYM', '1m', 2)
+    assert isinstance(df, pd.DataFrame)
+    assert set(['timestamp', 'open', 'high', 'low', 'close', 'volume', 'datetime']).issubset(df.columns)
+
+def test_get_current_price_returns_last():
+    price = get_current_price('SYM')
+    assert price == 123.4
+
+def test_calculate_indicators_adds_columns():
+    df = fetch_market_data('SYM', '1m', 2)
+    df2 = calculate_indicators(df, ema_length=2, volume_multiplier=1.0, trading_start_hour=0, trading_end_hour=23)
+    for col in ['ema', 'atr', 'high_volume', 'rsi', 'adx', 'within_trading_hours']:
+        assert col in df2.columns
+
+def test_place_order_prints_information(capsys):
+    place_order('buy', 'tTESTSYM', 0.5)
+    captured = capsys.readouterr()
+    assert 'type: buy' in captured.out.lower()
+    assert 'symbol: tTESTSYM' in captured.out
+    # Test limit order
+    place_order('sell', 'tTESTSYM', 0.5, price=10)
+    captured = capsys.readouterr()
+    assert 'type: sell' in captured.out.lower()
+    assert 'price: 10' in captured.out
+
+
+@pytest.fixture
+def sample_data():
+    timestamps = pd.date_range('2021-01-01', periods=5, freq='H', tz='UTC')
+    df = pd.DataFrame({
+        'timestamp': [int(ts.value/1e6) for ts in timestamps],
+        'open': [1, 2, 3, 4, 5],
+        'high': [2, 3, 4, 5, 6],
+        'low': [0.5, 1.5, 2.5, 3.5, 4.5],
+        'close': [1.5, 2.5, 3.5, 4.5, 5.5],
+        'volume': [10, 20, 30, 40, 50]
+    })
+    df['datetime'] = timestamps
+    return df
+
+def test_calculate_indicators_columns(sample_data):
+    df = calculate_indicators(sample_data.copy(), ema_length=3, volume_multiplier=1.5, trading_start_hour=0, trading_end_hour=23)
+    assert 'ema' in df.columns and df['ema'].notnull().any()
+    assert 'atr' in df.columns and df['atr'].notnull().any()
+    assert 'avg_volume' in df.columns and df['avg_volume'].notnull().any()
+    assert 'high_volume' in df.columns
+    assert 'rsi' in df.columns and df['rsi'].notnull().any()
+    assert 'adx' in df.columns and df['adx'].notnull().any()
+    assert 'within_trading_hours' in df.columns and df['within_trading_hours'].all()
+
+def test_detect_fvg(sample_data):
+    # bullish: previous high and last low
+    high, low = detect_fvg(sample_data, lookback=2, bullish=True)
+    assert high == sample_data['high'].iloc[-2]
+    assert low == sample_data['low'].iloc[-1]
+    # bearish: last high and previous low
+    high_b, low_b = detect_fvg(sample_data, lookback=2, bullish=False)
+    assert high_b == sample_data['high'].iloc[-1]
+    assert low_b == sample_data['low'].iloc[-2]

@@ -86,106 +86,183 @@
             background: #222;
         }
     </style>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-..." crossorigin="anonymous">
     <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Optional FontAwesome -->
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
 </head>
-<body>
-    <h1>Tradingbot Dashboard</h1>
-    <div class="section status">
-        <strong>Status:</strong> <span id="bot-status">Laddar...</span>
-        <button onclick="startBot()">Starta bot</button>
-        <button onclick="stopBot()">Stoppa bot</button>
+<body class="bg-light">
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">Tradingbot</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav">
+          <li class="nav-item"><a class="nav-link" href="#status-section">Status</a></li>
+          <li class="nav-item"><a class="nav-link" href="#balance-section">Saldo</a></li>
+          <li class="nav-item"><a class="nav-link" href="#orders-section">Senaste ordrar</a></li>
+          <li class="nav-item"><a class="nav-link" href="#history-section">Orderhistorik</a></li>
+          <li class="nav-item"><a class="nav-link" href="#openorders-section">Aktiva ordrar</a></li>
+          <li class="nav-item"><a class="nav-link" href="#chart-section">Prisgraf</a></li>
+        </ul>
+      </div>
     </div>
-    <div class="section">
-        <div class="card-title"><i>💰</i> Saldo</div>
-        <table id="balance-table"></table>
-    </div>
-    <div class="section">
-        <div class="card-title"><i>📋</i> Senaste ordrar
-            <span id="orders-summary" style="margin-left:1em;font-size:0.9em;color:#888;"></span>
+  </nav>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-3 d-none d-md-block">
+        <!-- Sidebar navigation -->
+        <div class="list-group position-sticky" style="top:100px;">
+          <a href="#status-section" class="list-group-item list-group-item-action">Status</a>
+          <a href="#balance-section" class="list-group-item list-group-item-action">Saldo</a>
+          <a href="#orders-section" class="list-group-item list-group-item-action">Senaste ordrar</a>
+          <a href="#history-section" class="list-group-item list-group-item-action">Orderhistorik</a>
+          <a href="#openorders-section" class="list-group-item list-group-item-action">Aktiva ordrar</a>
+          <a href="#chart-section" class="list-group-item list-group-item-action">Prisgraf</a>
         </div>
-        <div class="scroll-table">
-            <table id="orders-table">
-                <thead><tr><th>Tid</th><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
+      </div>
+      <div class="col-md-9">
+        <!-- Main content -->
+        <section id="status-section" class="mb-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="section status">
+                <strong>Status:</strong> <span id="bot-status">Laddar...</span>
+                <button onclick="startBot()">Starta bot</button>
+                <button onclick="stopBot()">Stoppa bot</button>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="balance-section" class="mb-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="section">
+                <div class="card-title"><i>💰</i> Saldo</div>
+                <table id="balance-table"></table>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="orders-section" class="mb-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="section">
+                <div class="card-title"><i>📋</i> Senaste ordrar
+                    <span id="orders-summary" style="margin-left:1em;font-size:0.9em;color:#888;"></span>
+                </div>
+                <div class="scroll-table">
+                    <table id="orders-table">
+                        <thead><tr><th>Tid</th><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="history-section" class="mb-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="section">
+                <div class="card-title"><i>📜</i> Orderhistorik (max 10 rader)
+                    <span id="orderhistory-summary" style="margin-left:1em;font-size:0.9em;color:#888;"></span>
+                </div>
+                <form id="orderhistory-form" onsubmit="return fetchOrderHistory();">
+                    <label>Symbol:
+                        <input type="text" id="history-symbol" placeholder="t.ex. tBTCUSD">
+                    </label>
+                    <label>Datum (YYYY-MM-DD):
+                        <input type="text" id="history-date" placeholder="2025-04-29">
+                    </label>
+                    <button type="submit">Visa orderhistorik</button>
+                </form>
+                <div class="scroll-table">
+                    <table id="orderhistory-table">
+                        <thead><tr><th>Tid</th><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="openorders-section" class="mb-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="section">
+                <div class="card-title"><i>🟢</i> Aktiva ordrar</div>
+                <table id="openorders-table">
+                    <thead><tr><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th><th>Tid</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="chart-section" class="mb-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="section">
+                <strong>Senaste pris:</strong>
+                <span id="realtime-price">Laddar...</span>
+              </div>
+              <div class="section">
+                <strong>Strategi-parametrar (config.json):</strong>
+                <form id="config-form" onsubmit="return saveConfig();">
+                    <textarea id="config-json" rows="12" cols="80" style="font-family:monospace;"></textarea><br>
+                    <button type="submit">Spara ändringar</button>
+                    <span id="config-result"></span>
+                </form>
+              </div>
+              <div class="section">
+                <strong>Skapa order:</strong>
+                <form id="order-form" onsubmit="return sendOrder();">
+                    <label>Symbol:
+                        <select id="order-symbol">
+                            <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
+                            <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
+                            <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
+                        </select>
+                    </label>
+                    <label>Typ:
+                        <select id="order-type">
+                            <option value="buy">Köp</option>
+                            <option value="sell">Sälj</option>
+                        </select>
+                    </label>
+                    <label>Mängd:
+                        <input type="number" id="order-amount" value="0.001" step="0.0001" min="0.0001" required>
+                    </label>
+                    <label>Pris (valfritt):
+                        <input type="number" id="order-price" step="0.01" min="0">
+                    </label>
+                    <button type="submit">Skicka order</button>
+                </form>
+                <div id="order-result"></div>
+              </div>
+              <div class="section" id="price-chart-section">
+                <div class="card-title"><i>📈</i> Prisgraf (senaste 50 värden)
+                    <select id="chart-symbol-select" style="margin-left:1em;">
+                        <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
+                        <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
+                        <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
+                    </select>
+                </div>
+                <canvas id="priceChart" height="120"></canvas>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
-    <div class="section">
-        <div class="card-title"><i>📜</i> Orderhistorik (max 10 rader)
-            <span id="orderhistory-summary" style="margin-left:1em;font-size:0.9em;color:#888;"></span>
-        </div>
-        <form id="orderhistory-form" onsubmit="return fetchOrderHistory();">
-            <label>Symbol:
-                <input type="text" id="history-symbol" placeholder="t.ex. tBTCUSD">
-            </label>
-            <label>Datum (YYYY-MM-DD):
-                <input type="text" id="history-date" placeholder="2025-04-29">
-            </label>
-            <button type="submit">Visa orderhistorik</button>
-        </form>
-        <div class="scroll-table">
-            <table id="orderhistory-table">
-                <thead><tr><th>Tid</th><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
-    <div class="section">
-        <div class="card-title"><i>🟢</i> Aktiva ordrar</div>
-        <table id="openorders-table">
-            <thead><tr><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th><th>Tid</th></tr></thead>
-            <tbody></tbody>
-        </table>
-    </div>
-    <div class="section">
-        <strong>Senaste pris:</strong>
-        <span id="realtime-price">Laddar...</span>
-    </div>
-    <div class="section">
-        <strong>Strategi-parametrar (config.json):</strong>
-        <form id="config-form" onsubmit="return saveConfig();">
-            <textarea id="config-json" rows="12" cols="80" style="font-family:monospace;"></textarea><br>
-            <button type="submit">Spara ändringar</button>
-            <span id="config-result"></span>
-        </form>
-    </div>
-    <div class="section">
-        <strong>Skapa order:</strong>
-        <form id="order-form" onsubmit="return sendOrder();">
-            <label>Symbol:
-                <select id="order-symbol">
-                    <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
-                    <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
-                    <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
-                </select>
-            </label>
-            <label>Typ:
-                <select id="order-type">
-                    <option value="buy">Köp</option>
-                    <option value="sell">Sälj</option>
-                </select>
-            </label>
-            <label>Mängd:
-                <input type="number" id="order-amount" value="0.001" step="0.0001" min="0.0001" required>
-            </label>
-            <label>Pris (valfritt):
-                <input type="number" id="order-price" step="0.01" min="0">
-            </label>
-            <button type="submit">Skicka order</button>
-        </form>
-        <div id="order-result"></div>
-    </div>
-    <div class="section" id="price-chart-section">
-        <div class="card-title"><i>📈</i> Prisgraf (senaste 50 värden)
-            <select id="chart-symbol-select" style="margin-left:1em;">
-                <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
-                <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
-                <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
-            </select>
-        </div>
-        <canvas id="priceChart" height="120"></canvas>
-    </div>
+  </div>
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-..." crossorigin="anonymous"></script>
     <script>
     const apiBase = '';
 
@@ -197,13 +274,31 @@
             });
     }
     function startBot() {
-        fetch(apiBase + '/start', {method: 'POST'})
-            .then(() => setTimeout(updateStatus, 1000));
+        fetch(apiBase + '/start', { method: 'POST' })
+            .then(async response => {
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const msg = data.reason || data.error || 'Kunde inte starta bot.';
+                    alert('Fel: ' + msg);
+                }
+            })
+            .catch(err => alert('Fel vid anrop: ' + err))
+            .finally(() => setTimeout(updateStatus, 1000));
     }
+
     function stopBot() {
-        fetch(apiBase + '/stop', {method: 'POST'})
-            .then(() => setTimeout(updateStatus, 1000));
+        fetch(apiBase + '/stop', { method: 'POST' })
+            .then(async response => {
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const msg = data.reason || data.error || 'Kunde inte stoppa bot.';
+                    alert('Fel: ' + msg);
+                }
+            })
+            .catch(err => alert('Fel vid anrop: ' + err))
+            .finally(() => setTimeout(updateStatus, 1000));
     }
+
     function updateBalance() {
         fetch(apiBase + '/balance')
             .then(r => r.json())
@@ -235,20 +330,34 @@
     }
     function parseOrderLine(line) {
         // Förväntat format: "YYYY-MM-DD HH:MM:SS: Order-ID: 123, Status: EXECUTED, Info: [...]"
-        const match = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?): Order-ID: (\d+), Status: ([^,]+), Info: (.+)$/);
+        const match = line.match(/^([\d\-: .]+): Order-ID: (\d+), Status: ([^,]+), Info: (.+)$/);
         if (!match) return null;
         let info = match[4];
-        let symbol = '', type = '', side = '', price = '', amount = '', infoText = info;
+        let symbol = '', type = '', side = '', price = '', amount = '', infoText = '';
         try {
-            const arr = JSON.parse(info.replace(/'/g, '"'));
-            symbol = arr[3] || '';
-            type = arr[8] || '';
-            side = (parseFloat(arr[6]) > 0 ? 'buy' : 'sell');
-            price = arr[16] || '';
-            amount = arr[6] || '';
-            infoText = '';
+            // Rensa Python None till JSON null, och enkla till dubbeLA citat
+            const cleanInfo = info.replace(/None/g, 'null').replace(/'/g, '"');
+            let arr = null;
+            try {
+                arr = JSON.parse(cleanInfo);
+            } catch (e) {
+                arr = null;
+            }
+            if (Array.isArray(arr)) {
+                // Bitfinex-format: symbol på index 3, typ på 8, side på 6, pris på 16, mängd på 6, status på 13
+                if (arr[3]) {
+                    const m = arr[3].match(/^t?TEST?([A-Z]+):TEST?([A-Z]+)$/i);
+                    symbol = m ? m[1].toUpperCase() + '/' + m[2].toUpperCase() : arr[3];
+                }
+                type = arr[8] || '';
+                side = (parseFloat(arr[6]) > 0 ? 'Köp' : 'Sälj');
+                price = arr[16] || '';
+                amount = arr[6] || '';
+                infoText = '';
+            } else {
+                infoText = info;
+            }
         } catch (e) {
-            // Om parsning misslyckas, visa info som text
             infoText = info;
         }
         return {
@@ -264,26 +373,21 @@
         };
     }
     function updateOrders() {
-        console.log('updateOrders körs');
         fetch(apiBase + '/orders')
             .then(r => r.json())
             .then(d => {
-                console.log('DATA FRÅN /orders:', d);
                 const tbody = document.getElementById('orders-table').querySelector('tbody');
                 tbody.innerHTML = '';
                 let count = 0;
                 (d.orders || []).forEach(line => {
-                    console.log('ORDER-RAD:', line);
                     const order = parseOrderLine(line);
                     if (order) {
                         let statusClass = 'status-other';
                         const status = order.status.toUpperCase();
                         if (status.startsWith('EXECUTED')) statusClass = 'status-executed';
                         else if (status.startsWith('CANCELED')) statusClass = 'status-canceled';
-                        tbody.innerHTML += `<tr><td>${order.time}</td><td>${order.orderId}</td><td>${order.symbol}</td><td>${order.type}</td><td>${order.side}</td><td>${order.price}</td><td>${order.amount}</td><td class='${statusClass}'>${order.status}</td></tr>`;
-                        if (order.infoText) {
-                            tbody.innerHTML += `<tr><td colspan='8' style='font-size:12px;color:#aaa;'>Info: ${order.infoText}</td></tr>`;
-                        }
+                        tbody.innerHTML += `<tr title='${order.infoText ? order.infoText : ''}'>` +
+                            `<td>${order.time}</td><td>${order.orderId}</td><td>${order.symbol}</td><td>${order.type}</td><td>${order.side}</td><td>${order.price}</td><td>${order.amount}</td><td class='${statusClass}'>${order.status}</td></tr>`;
                         count++;
                     } else {
                         tbody.innerHTML += `<tr><td colspan='8'>${line}</td></tr>`;
@@ -366,10 +470,8 @@
                         const status = order.status.toUpperCase();
                         if (status.startsWith('EXECUTED')) statusClass = 'status-executed';
                         else if (status.startsWith('CANCELED')) statusClass = 'status-canceled';
-                        tbody.innerHTML += `<tr><td>${order.time}</td><td>${order.orderId}</td><td>${order.symbol}</td><td>${order.type}</td><td>${order.side}</td><td>${order.price}</td><td>${order.amount}</td><td class='${statusClass}'>${order.status}</td></tr>`;
-                        if (order.infoText) {
-                            tbody.innerHTML += `<tr><td colspan='8' style='font-size:12px;color:#aaa;'>Info: ${order.infoText}</td></tr>`;
-                        }
+                        tbody.innerHTML += `<tr title='${order.infoText ? order.infoText : ''}'>` +
+                            `<td>${order.time}</td><td>${order.orderId}</td><td>${order.symbol}</td><td>${order.type}</td><td>${order.side}</td><td>${order.price}</td><td>${order.amount}</td><td class='${statusClass}'>${order.status}</td></tr>`;
                         count++;
                     } else {
                         tbody.innerHTML += `<tr><td colspan='8'>${line}</td></tr>`;

@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, send_file, redirect, url_for
+from flask import Flask, jsonify, request, send_file, redirect, url_for, Response
 import threading
 import subprocess
 import os
@@ -7,11 +7,35 @@ from dotenv import load_dotenv
 
 app = Flask(__name__)
 
+CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
+}
+
+@app.after_request
+def add_cors_headers(response):
+    for k, v in CORS_HEADERS.items():
+        response.headers[k] = v
+    return response
+
+# Handle CORS preflight globally
+@app.route('/<path:path>', methods=['OPTIONS'])
+def handle_options(path):
+    return Response(status=200)
+
 # Path to your tradingbot.py
 BOT_PATH = os.path.join(os.path.dirname(__file__), 'tradingbot.py')
 
 # Global variable to keep track of the bot process
 bot_process = None
+
+logger = logging.getLogger(__name__)
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.exception("Unhandled exception in API:")
+    return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/status', methods=['GET'])
 def status():
@@ -22,6 +46,7 @@ def status():
 @app.route('/start', methods=['POST'])
 def start_bot():
     global bot_process
+    logger.info("API /start called, bot_process=%s", bot_process)
     if bot_process is None or bot_process.poll() is not None:
         bot_process = subprocess.Popen(['python3', BOT_PATH])
         return jsonify({"started": True})
@@ -31,6 +56,7 @@ def start_bot():
 @app.route('/stop', methods=['POST'])
 def stop_bot():
     global bot_process
+    logger.info("API /stop called, bot_process=%s", bot_process)
     if bot_process is not None and bot_process.poll() is None:
         bot_process.terminate()
         bot_process = None
@@ -102,7 +128,8 @@ def create_order():
         place_order(order_type, symbol, amount, price)
         return jsonify({"success": True, "message": f"{order_type} order sent for {symbol}."})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        logger.exception("Error in create_order:")
+        return jsonify({"success": False, "error": "Could not place order."}), 400
 
 @app.route('/realtimedata', methods=['GET'])
 def realtimatedata():
@@ -161,10 +188,8 @@ def get_open_orders():
         print(f'[DEBUG] /openorders: Returnerar {len(result)} ordrar')
         return jsonify({'open_orders': result})
     except Exception as e:
-        import traceback
-        print(f'[ERROR] /openorders: {e}')
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        logger.exception("Error in /openorders:")
+        return jsonify({'error': 'Unable to fetch open orders.'}), 500
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')

@@ -1,7 +1,7 @@
 {
   "EXCHANGE": "bitfinex",
   "SYMBOL": "tTESTBTC:TESTUSD",
-  "TIMEFRAME": "30m",
+  "TIMEFRAME": "35m",
   "LIMIT": 100,
   "EMA_LENGTH": 50,
   "ATR_MULTIPLIER": 0.5,

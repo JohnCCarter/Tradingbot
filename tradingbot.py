@@ -6,7 +6,11 @@ import hashlib
 import asyncio
 import signal
 from datetime import datetime
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv():
+        pass
 import pandas as pd
 import numpy as np
 import talib
@@ -19,11 +23,23 @@ import threading
 import smtplib
 from email.mime.text import MIMEText
 import time
+import functools
+from functools import lru_cache
+# Lägg till enkel retry-decorator
+import time as _time
+from pydantic import BaseModel
+from prometheus_client import start_http_server, Summary, Counter
+try:
+    from pythonjsonlogger import jsonlogger
+except Exception:
+    jsonlogger = None
+import http.server
+import socketserver
 
 # Create timezone object once
 LOCAL_TIMEZONE = timezone('Europe/Stockholm')
 
-# Load environment variables
+# Load environment variables (safe if python-dotenv is missing)
 load_dotenv()
 
 # Constants
@@ -35,70 +51,115 @@ def validate_api_keys(api_key, api_secret, exchange_name=""):
 
 validate_api_keys(API_KEY, API_SECRET)
 
-# Load config from config.json
-with open("config.json") as f:
-    config = json.load(f)
+# Metrics
+REQUEST_TIME = Summary('request_processing_seconds', 'Time spent processing requests')
+ORDERS_PLACED = Counter('orders_placed_total', 'Total number of orders placed')
+# Start Prometheus metrics server
+try:
+    start_http_server(8000)
+except OSError as e:
+    logging.warning(f"Prometheus metrics server could not start on port 8000: {e}")
 
-# Validate config values
-required_config_keys = ["EXCHANGE", "SYMBOL", "TIMEFRAME", "LIMIT", "EMA_LENGTH", "ATR_MULTIPLIER", "VOLUME_MULTIPLIER", "TRADING_START_HOUR", "TRADING_END_HOUR", "MAX_DAILY_LOSS", "MAX_TRADES_PER_DAY"]
-for key in required_config_keys:
-    if key not in config:
-        raise ValueError(f"Missing required key '{key}' in config.json")
+# Config schema
+class BotConfig(BaseModel):
+    EXCHANGE: str
+    SYMBOL: str
+    TIMEFRAME: str
+    LIMIT: int
+    EMA_LENGTH: int
+    ATR_MULTIPLIER: float
+    VOLUME_MULTIPLIER: float
+    TRADING_START_HOUR: int
+    TRADING_END_HOUR: int
+    MAX_DAILY_LOSS: float
+    MAX_TRADES_PER_DAY: int
+    STOP_LOSS_PERCENT: float = 2.0
+    TAKE_PROFIT_PERCENT: float = 4.0
+    EMAIL_NOTIFICATIONS: bool = False
+    EMAIL_SMTP_SERVER: str = 'smtp.gmail.com'
+    EMAIL_SMTP_PORT: int = 465
+    EMAIL_SENDER: str = ''
+    EMAIL_RECEIVER: str = ''
+    EMAIL_PASSWORD: str = ''  # Lägg till SMTP-lösenord för e-postnotifikationer
 
-# Add stop loss and take profit config
-STOP_LOSS_PERCENT = config.get("STOP_LOSS_PERCENT", 2.0)
-TAKE_PROFIT_PERCENT = config.get("TAKE_PROFIT_PERCENT", 4.0)
+# Load config via Pydantic
+with open('config.json') as f:
+    raw_config = json.load(f)
+config = BotConfig(**raw_config)
 
-EMAIL_NOTIFICATIONS = config.get("EMAIL_NOTIFICATIONS", False)
-EMAIL_SMTP_SERVER = config.get("EMAIL_SMTP_SERVER", "smtp.gmail.com")
-EMAIL_SMTP_PORT = config.get("EMAIL_SMTP_PORT", 465)
-EMAIL_SENDER = config.get("EMAIL_SENDER", "")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
-EMAIL_RECEIVER = config.get("EMAIL_RECEIVER", "")
+# Assign config variables
+EXCHANGE_NAME = config.EXCHANGE.lower()
+SYMBOL = config.SYMBOL
+TIMEFRAME = config.TIMEFRAME
+LIMIT = config.LIMIT
+EMA_LENGTH = config.EMA_LENGTH
+ATR_MULTIPLIER = config.ATR_MULTIPLIER
+VOLUME_MULTIPLIER = config.VOLUME_MULTIPLIER
+TRADING_START_HOUR = config.TRADING_START_HOUR
+TRADING_END_HOUR = config.TRADING_END_HOUR
+MAX_DAILY_LOSS = config.MAX_DAILY_LOSS
+MAX_TRADES_PER_DAY = config.MAX_TRADES_PER_DAY
+STOP_LOSS_PERCENT = config.STOP_LOSS_PERCENT
+TAKE_PROFIT_PERCENT = config.TAKE_PROFIT_PERCENT
+EMAIL_NOTIFICATIONS = config.EMAIL_NOTIFICATIONS
+EMAIL_SMTP_SERVER = config.EMAIL_SMTP_SERVER
+EMAIL_SMTP_PORT = config.EMAIL_SMTP_PORT
+EMAIL_SENDER = config.EMAIL_SENDER
+EMAIL_RECEIVER = config.EMAIL_RECEIVER
+EMAIL_PASSWORD = config.EMAIL_PASSWORD
 
-EXCHANGE_NAME = config["EXCHANGE"].lower()
-SYMBOL = config["SYMBOL"]
-TIMEFRAME = config["TIMEFRAME"]
-LIMIT = config["LIMIT"]
-EMA_LENGTH = config["EMA_LENGTH"]
-ATR_MULTIPLIER = config["ATR_MULTIPLIER"]
-VOLUME_MULTIPLIER = config["VOLUME_MULTIPLIER"]
-TRADING_START_HOUR = config["TRADING_START_HOUR"]
-TRADING_END_HOUR = config["TRADING_END_HOUR"]
-MAX_DAILY_LOSS = config["MAX_DAILY_LOSS"]
-MAX_TRADES_PER_DAY = config["MAX_TRADES_PER_DAY"]
+# Override email credentials from environment if set
+EMAIL_SENDER = os.getenv('EMAIL_SENDER', EMAIL_SENDER)
+EMAIL_RECEIVER = os.getenv('EMAIL_RECEIVER', EMAIL_RECEIVER)
+EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD', EMAIL_PASSWORD)
 
-# Initialize exchange based on config
-if EXCHANGE_NAME == "bitfinex":
-    API_KEY = os.getenv("API_KEY")
-    API_SECRET = os.getenv("API_SECRET")
-    validate_api_keys(API_KEY, API_SECRET, "Bitfinex")
-    exchange = ccxt.bitfinex({
-        'apiKey': API_KEY,
-        'secret': API_SECRET
-    })
-    exchange.nonce = lambda: int(time.time() * 1000)
-# Coinbase-kod bortkommenterad nedan
-# elif EXCHANGE_NAME == "coinbase":
-#     API_KEY = os.getenv("COINBASE_API_KEY")
-#     API_SECRET = os.getenv("COINBASE_API_SECRET")
-#     if not API_KEY or not API_SECRET:
-#         raise ValueError("COINBASE_API_KEY och COINBASE_API_SECRET krävs för Coinbase. Lägg till dem i din .env-fil.")
-#     exchange = ccxt.coinbase({
-#         'apiKey': API_KEY,
-#         'secret': API_SECRET
-#     })
+# Setup structured logging (JSON if available)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+if jsonlogger:
+    json_handler = logging.StreamHandler()
+    json_formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(message)s')
+    json_handler.setFormatter(json_formatter)
+    logger.addHandler(json_handler)
 else:
-    raise ValueError(f"Exchange '{EXCHANGE_NAME}' stöds inte ännu.")
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+logging = logger
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Setup exchange instance
+try:
+    exchange_class = getattr(ccxt, EXCHANGE_NAME)
+except AttributeError:
+    raise ValueError(f"Unsupported exchange: {EXCHANGE_NAME}")
+exchange = exchange_class({
+    'apiKey': API_KEY,
+    'secret': API_SECRET,
+    'enableRateLimit': True
+})
+# Exchange-specific tweaks
+if EXCHANGE_NAME == "bitfinex":
+    exchange.nonce = lambda: int(time.time() * 1000)
+exchange.load_markets()
 
 # Utility functions
+
+def retry(max_attempts=3, initial_delay=1):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_attempts:
+                        raise
+                    _time.sleep(delay)
+                    delay *= 2
+        return wrapper
+    return decorator
 
 def fetch_balance():
     try:
@@ -107,7 +168,9 @@ def fetch_balance():
         logging.error(f"py balance: {e}")
         return None
 
-
+# Lägg till caching och retry för marknadsdata
+@retry(max_attempts=3, initial_delay=1)
+@lru_cache(maxsize=32)
 def fetch_market_data(symbol, timeframe, limit):
     try:
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
@@ -121,6 +184,19 @@ def fetch_market_data(symbol, timeframe, limit):
         logging.error(f"Error fetching market data: {e}")
         return None
 
+# Lägg till retry för nuvarande pris
+@retry(max_attempts=3, initial_delay=1)
+def get_current_price(symbol):
+    try:
+        ticker = exchange.fetch_ticker(symbol)
+        if 'last' in ticker:
+            return ticker['last']
+        else:
+            logging.warning("'last' key not found in ticker data.")
+            return None
+    except Exception as e:
+        logging.error(f"Error fetching current price: {e}")
+        return None
 
 def calculate_indicators(
     data, ema_length, volume_multiplier, trading_start_hour, trading_end_hour
@@ -194,6 +270,12 @@ def place_order(order_type, symbol, amount, price=None, stop_loss=None, take_pro
         return
     try:
         params = {}
+        # Sätt rätt typ för Bitfinex testsymboler
+        if symbol and symbol.startswith('tTEST'):
+            if price:
+                params['type'] = 'EXCHANGE LIMIT'
+            else:
+                params['type'] = 'EXCHANGE MARKET'
         if order_type == 'buy':
             print("[DEBUG] Anropar create_limit_buy_order eller create_market_buy_order...")
             order = exchange.create_limit_buy_order(symbol, amount, price, params) if price else exchange.create_market_buy_order(symbol, amount, params)
@@ -236,19 +318,6 @@ def place_order(order_type, symbol, amount, price=None, stop_loss=None, take_pro
     except Exception as e:
         print(f"[DEBUG] Fel vid orderläggning: {e}")
         print(f"Error placing {order_type} order: {e}")
-
-
-def get_current_price(symbol):
-    try:
-        ticker = exchange.fetch_ticker(symbol)
-        if 'last' in ticker:
-            return ticker['last']
-        else:
-            logging.warning("'last' key not found in ticker data.")
-            return None
-    except Exception as e:
-        logging.error(f"Error fetching current price: {e}")
-        return None
 
 # WebSocket authentication
 
@@ -366,11 +435,33 @@ def process_realtime_data(raw_data):
         logging.error(f"Error processing real-time data: {e}")
         return None
 
+# Lägg till asynkron wrapper för historisk datahämtning
+async def fetch_historical_data_async(symbol, timeframe, limit):
+    """
+    Async wrapper runt fetch_market_data för att hämta historisk OHLCV-data i bakgrund utan att blockera huvudloopen.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_market_data, symbol, timeframe, limit)
 
 async def main():
     try:
+        # Starta bakgrundsuppgift för att hämta historisk data asynkront
+        hist_task = asyncio.create_task(fetch_historical_data_async(SYMBOL, TIMEFRAME, LIMIT))
         logging.info("Fetching real-time data...")
+        # Hämta realtidsdata från WebSocket
         realtime_data = await fetch_realtime_data()
+        # Vänta på att historisk data är färdighämtad
+        historical_data = await hist_task
+        if historical_data is not None:
+            logging.info(f"Fetched historical data: {len(historical_data)} entries.")
+            # Du kan beräkna indikatorer på historisk data vid behov
+            _ = calculate_indicators(
+                historical_data,
+                EMA_LENGTH,
+                VOLUME_MULTIPLIER,
+                TRADING_START_HOUR,
+                TRADING_END_HOUR
+            )
         if realtime_data:
             structured_data = process_realtime_data(realtime_data)
             if structured_data is not None:
@@ -394,7 +485,6 @@ async def main():
             logging.error("Failed to fetch real-time data.")
     except Exception as e:
         logging.error(f"Error in main function: {e}")
-
 
 def execute_trading_strategy(
     data,
@@ -462,28 +552,66 @@ def execute_trading_strategy(
     except Exception as e:
         logging.error(f"Error executing trading strategy: {e}")
 
+# Strategimodularisering: definiera TradingStrategy-klass
+class TradingStrategy:
+    def __init__(self, symbol, ema_length, atr_multiplier, volume_multiplier, start_hour, end_hour, max_trades, max_loss, stop_loss_pct, take_profit_pct, lookback=100):
+        self.symbol = symbol
+        self.ema_length = ema_length
+        self.atr_multiplier = atr_multiplier
+        self.volume_multiplier = volume_multiplier
+        self.start_hour = start_hour
+        self.end_hour = end_hour
+        self.max_trades = max_trades
+        self.max_loss = max_loss
+        self.stop_loss_pct = stop_loss_pct
+        self.take_profit_pct = take_profit_pct
+        self.lookback = lookback
+
+    def calculate_indicators(self, data):
+        return calculate_indicators(
+            data,
+            self.ema_length,
+            self.volume_multiplier,
+            self.start_hour,
+            self.end_hour
+        )
+
+    def detect_fvg(self, data, bullish):
+        return detect_fvg(data, self.lookback, bullish)
+
+    def execute(self, data):
+        if data is None or data.empty:
+            logging.error("Data is invalid or empty. Trading strategy cannot be executed.")
+            return
+        # init counters
+        trade_count = 0
+        daily_loss = 0
+        mean_atr = data['atr'].mean() if 'atr' in data.columns else 0
+        for idx, row in data.iterrows():
+            if daily_loss < -self.max_loss or trade_count >= self.max_trades:
+                break
+            if 'atr' in row and row['atr'] <= self.atr_multiplier * mean_atr:
+                continue
+            bull_high, bull_low = self.detect_fvg(data.iloc[:idx+1], True)
+            bear_high, bear_low = self.detect_fvg(data.iloc[:idx+1], False)
+            long_cond = (not np.isnan(bull_high) and row['close'] < bull_low and row['close'] > row['ema'] and row['high_volume'] and row['within_trading_hours'])
+            short_cond = (not np.isnan(bear_high) and row['close'] > bear_high and row['close'] < row['ema'] and row['high_volume'] and row['within_trading_hours'])
+            if long_cond:
+                trade_count += 1
+                sl = row['close'] * (1 - self.stop_loss_pct/100)
+                tp = row['close'] * (1 + self.take_profit_pct/100)
+                place_order('buy', self.symbol, 0.001, row['close'], sl, tp)
+            if short_cond:
+                trade_count += 1
+                sl = row['close'] * (1 + self.stop_loss_pct/100)
+                tp = row['close'] * (1 - self.take_profit_pct/100)
+                place_order('sell', self.symbol, 0.001, row['close'], sl, tp)
+
 # Signal handling
 
 def signal_handler(sig, frame):
     logging.info("\nExiting program...")
     exit(0)
-
-# Execute the main function to start the trading bot
-# This is the primary execution flow of the program
-if __name__ == "__main__":
-    import signal
-    signal.signal(signal.SIGINT, signal_handler)
-    # print("[DEBUG] Miljövariabler:")
-    # print_env_vars()
-    # Starta WebSocket-lyssnare i bakgrunden
-    threading.Thread(target=lambda: asyncio.run(listen_order_updates()), daemon=True).start()
-    asyncio.run(main())
-    # Håll programmet igång så att WebSocket-lyssnaren lever
-    try:
-        while True:
-            time.sleep(60)
-    except KeyboardInterrupt:
-        print("Avslutar boten...")
 
 def run_backtest(symbol, timeframe, limit, ema_length, volume_multiplier, trading_start_hour, trading_end_hour, max_trades_per_day, max_daily_loss, atr_multiplier, lookback=100, print_orders=False, save_to_file=None):
     """
@@ -618,8 +746,6 @@ async def listen_order_updates():
                     print("[WS] Autentisering misslyckades:", data)
 
 # Starta WebSocket-lyssnare i bakgrunden när boten startar
-threading.Thread(target=lambda: asyncio.run(listen_order_updates()), daemon=True).start()
-
 def print_env_vars():
     import os
     print("API_KEY:", os.getenv("API_KEY"))
@@ -627,13 +753,33 @@ def print_env_vars():
     # print("COINBASE_API_KEY:", os.getenv("COINBASE_API_KEY"))
     # print("COINBASE_API_SECRET:", os.getenv("COINBASE_API_SECRET"))
 
+# Helper to start WebSocket listener in thread
+def _start_listen_updates():
+    """Wrapper to run listen_order_updates as an asyncio task in a separate thread."""
+    asyncio.run(listen_order_updates())
+
+# Health-check endpoint server on port 5000
+class HealthHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'status': 'ok'}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
 if __name__ == "__main__":
     import signal
     signal.signal(signal.SIGINT, signal_handler)
-    # print("[DEBUG] Miljövariabler:")
-    # print_env_vars()
-    # Starta WebSocket-lyssnare i bakgrunden
-    threading.Thread(target=lambda: asyncio.run(listen_order_updates()), daemon=True).start()
+    # Starta WebSocket-lyssnare i bakgrunden via wrapper function
+    threading.Thread(target=_start_listen_updates, daemon=True).start()
+    # Start health-check endpoint server
+    threading.Thread(
+        target=lambda: socketserver.TCPServer(('0.0.0.0', 5000), HealthHandler).serve_forever(),
+        daemon=True
+    ).start()
     asyncio.run(main())
     # Håll programmet igång så att WebSocket-lyssnaren lever
     try:

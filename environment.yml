@@ -84,6 +84,7 @@ dependencies:
       - yfinance==0.2.55
       - zipp==3.21.0
       - websockets
+      - python-json-logger==2.0.7
 prefix: /opt/conda/envs/tradingbot_env
 
 
