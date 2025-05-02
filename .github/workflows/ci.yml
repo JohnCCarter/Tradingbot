@@ -31,11 +31,11 @@ jobs:
 
       - name: Run lint
         run: |
-          pip install flake8
-          flake8 . \
-            --max-line-length=120 \
-            --ignore=E302,E305,E301,E303,E306,E401,F821,F824,E265,W292,E501 \
-            --exclude="__pycache__"
+          pip install black flake8
+          # Auto-format code using Black
+          black .
+          # Lint formatted code
+          flake8 .
 
       - name: Run tests
         run: |
