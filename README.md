@@ -135,3 +135,22 @@
 - Lägg till CI/CD för automatiska tester och kodkvalitet
 - Utvärdera och optimera prestanda för realtidsdata
 - Lägg till fler backtest-möjligheter och statistik
+
+## Projektstruktur
+- Uppdatera projektstruktur för att matcha aktuella filer och mappar
+```plaintext
+Tradingbot/
+├── api.py                    # API-klient och wrapper (om används)
+├── config.json               # Konfigurationsparametrar för boten
+├── dashboard.html            # Enkel HTML-dashboard
+├── dockerfile                # Docker-konfiguration
+├── environment.yml           # Conda-miljödefinition
+├── tradingbot.py             # Huvudscript för tradingbot
+├── test_tradingbot.py        # Pytest-tester
+├── script.sh                 # Installationsscript för ny server/VM
+├── script_start.sh           # Startscript för daglig drift
+├── README.md                 # Denna fil
+├── ROADMAP.md                # Roadmap och TODO-lista
+├── order_status_log.txt      # Loggfil för orderstatus
+└── __pycache__/              # Kompilerade Python-filer
+```

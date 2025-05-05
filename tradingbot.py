@@ -37,9 +37,9 @@ from pydantic import BaseModel
 from prometheus_client import start_http_server, Summary, Counter
 
 try:
-    from pythonjsonlogger import jsonlogger
-except Exception:
-    jsonlogger = None
+    from pythonjsonlogger.json import JsonFormatter
+except ImportError:
+    JsonFormatter = None
 import http.server
 import socketserver
 import sys
@@ -129,9 +129,9 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", EMAIL_PASSWORD)
 # Setup structured logging (JSON if available)
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-if jsonlogger:
+if JsonFormatter:
     json_handler = logging.StreamHandler()
-    json_formatter = jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(message)s")
+    json_formatter = JsonFormatter("%(asctime)s %(levelname)s %(message)s")
     json_handler.setFormatter(json_formatter)
     logger.addHandler(json_handler)
 else:
@@ -192,12 +192,21 @@ def fetch_balance():
 def fetch_market_data(symbol, timeframe, limit):
     try:
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-        if not ohlcv or not all(len(row) == 6 for row in ohlcv):
-            logging.warning("Malformed or incomplete data fetched from API.")
+        if not ohlcv:
+            logging.warning("No market data fetched from API.")
             return None
-        data = pd.DataFrame(
-            ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"]
-        )
+        # Filter out rows that don't have exactly 6 elements
+        valid_rows = [row for row in ohlcv if isinstance(row, (list, tuple)) and len(row) == 6]
+        if not valid_rows:
+            logging.warning("All fetched market data rows are malformed.")
+            return None
+        if len(valid_rows) != len(ohlcv):
+            dropped = len(ohlcv) - len(valid_rows)
+            if not valid_rows:
+                logging.error("No valid market data rows were fetched after filtering.")
+            else:
+                logging.warning(f"Dropped {dropped} malformed data rows.")
+        data = pd.DataFrame(valid_rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
         data["datetime"] = pd.to_datetime(data["timestamp"], unit="ms", utc=True)
         return data
     except Exception as e:
@@ -259,7 +268,7 @@ def calculate_indicators(
         except Exception:
             data["rsi"] = 0
         # Fill initial NaN RSI values
-        data["rsi"].fillna(0, inplace=True)
+        data["rsi"] = data["rsi"].fillna(0)
         # Calculate ADX safely
         adx_period = min(14, data_len - 1) if data_len > 1 else 2
         try:
@@ -267,7 +276,7 @@ def calculate_indicators(
         except Exception:
             data["adx"] = 0
         # Fill initial NaN ADX values
-        data["adx"].fillna(0, inplace=True)
+        data["adx"] = data["adx"].fillna(0)
         data["hour"] = data["datetime"].dt.hour
         data["within_trading_hours"] = data["hour"].between(
             trading_start_hour, trading_end_hour

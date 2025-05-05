@@ -431,7 +431,7 @@ def test_place_order_prints_information(capsys):
 
 @pytest.fixture
 def sample_data():
-    timestamps = pd.date_range("2021-01-01", periods=5, freq="H", tz="UTC")
+    timestamps = pd.date_range("2021-01-01", periods=5, freq="h", tz="UTC")  # Use lowercase 'h' per pandas deprecation
     df = pd.DataFrame(
         {
             "timestamp": [int(ts.value / 1e6) for ts in timestamps],
