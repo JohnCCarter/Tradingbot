@@ -42,6 +42,7 @@ except Exception:
     jsonlogger = None
 import http.server
 import socketserver
+import sys
 
 # Create timezone object once
 LOCAL_TIMEZONE = timezone("Europe/Stockholm")
@@ -856,8 +857,12 @@ class HealthHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+def signal_handler(signum, frame):
+    logging.info("Signal received, shutting down bot gracefully.")
+    sys.exit(0)
 
 if __name__ == "__main__":
+    import signal as signal_module
     import signal as signal_module
 
     signal_module.signal(signal_module.SIGINT, signal_handler)

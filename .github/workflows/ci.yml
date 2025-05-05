@@ -16,21 +16,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Setup Python 3.12
+      - name: Setup Python 3.9
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Install TA-Lib C library from source
+      - name: Install system dependencies
         run: |
-            sudo apt-get update
-            sudo apt-get install -y build-essential wget
-            wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-            tar -xzf ta-lib-0.4.0-src.tar.gz
-            cd ta-lib
-            ./configure --prefix=/usr
-            make
-            sudo make install
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libta-lib0 \
+            libta-lib-dev
 
       - name: Install dependencies
         run: |
@@ -48,9 +45,7 @@ jobs:
         run: |
           pip install black flake8
           black .
-          # Visa version och sökväg till loaded config
           flake8 --version
-          # Kör lint med er config-fil
           flake8 . --config .flake8
 
       - name: Run tests
@@ -73,6 +68,6 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: dockerfile
+          file: Dockerfile
           push: false
           tags: tradingbot:latest
