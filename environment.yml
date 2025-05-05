@@ -9,6 +9,7 @@ dependencies:
   - ta-lib
   - pytest
   - flake8
+  - black
   - pip:
       - absl-py==2.2.2
       - aiodns==3.2.0
@@ -85,6 +86,5 @@ dependencies:
       - zipp==3.21.0
       - websockets
       - python-json-logger==2.0.7
+      - pydantic
 prefix: /opt/conda/envs/tradingbot_env
-
-
