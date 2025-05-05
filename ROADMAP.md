@@ -23,7 +23,7 @@
 - Lösenordsskydd/adgang till dashboarden
 - Automatiska e-postrapporter om tradingresultat
 - Mobilanpassning av dashboarden
-- Dockerisering och möjlighet till molndeployment
+- dockerisering och möjlighet till molndeployment
 
 ---
 Uppdatera denna fil löpande när nya funktioner implementeras eller påbörjas.
