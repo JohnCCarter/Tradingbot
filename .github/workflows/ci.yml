@@ -24,9 +24,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Install core Python packages including pytest for tests
+          pip install pytest pandas python-json-logger
+          # If using conda environment file, install other deps too
           if [ -f environment.yml ]; then
-            pip install -r <(grep -E "^- [a-zA-Z0-9]" environment.yml | sed 's/^- //') ; else
-            pip install pytest pandas python-json-logger
+            pip install -r <(grep -E "^- [a-zA-Z0-9]" environment.yml | sed 's/^- //')
           fi
 
       - name: Run lint
@@ -40,7 +42,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest --maxfail=1 --disable-warnings -q
+          python -m pytest --maxfail=1 --disable-warnings -q
 
   docker-build:
     runs-on: ubuntu-latest
