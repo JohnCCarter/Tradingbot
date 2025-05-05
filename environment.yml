@@ -8,8 +8,8 @@ dependencies:
   - python-dotenv
   - ta-lib
   - pytest
-  - flake8
-  - black
+  - flake8==6.1.0
+  - black==23.9.1
   - pip:
       - absl-py==2.2.2
       - aiodns==3.2.0
@@ -87,4 +87,5 @@ dependencies:
       - websockets
       - python-json-logger==2.0.7
       - pydantic
-prefix: /opt/conda/envs/tradingbot_env
+      - prometheus-client
+
