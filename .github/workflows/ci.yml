@@ -21,13 +21,16 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install TA-Lib C library
+      - name: Install TA-Lib C library from source
         run: |
             sudo apt-get update
-            sudo apt-get install -y software-properties-common
-            sudo add-apt-repository -y ppa:deadsnakes/ppa # Example custom repo if needed
-            sudo apt-get update
-            sudo apt-get install -y libta-lib0 libta-lib-dev
+            sudo apt-get install -y build-essential wget
+            wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+            tar -xzf ta-lib-0.4.0-src.tar.gz
+            cd ta-lib
+            ./configure --prefix=/usr
+            make
+            sudo make install
 
       - name: Install dependencies
         run: |
