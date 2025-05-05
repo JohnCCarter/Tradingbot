@@ -32,10 +32,11 @@ jobs:
       - name: Run lint
         run: |
           pip install black flake8
-          # Auto-format code using Black
           black .
-          # Lint formatted code
-          flake8 .
+          # Visa version och sökväg till loaded config
+          flake8 --version
+          # Kör lint med er config-fil
+          flake8 . --config .flake8
 
       - name: Run tests
         run: |
