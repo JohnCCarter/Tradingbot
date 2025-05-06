@@ -1,50 +1,70 @@
 #!/usr/bin/env bash
 set -euo pipefail
 IFS=$'\n\t'
-# script_start.sh – Startar Tradingbot i rätt miljö
 
-# 1) Bestäm scriptets katalog och byt dit
+# 1) Gå till scriptets katalog
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR"
 
-# 2) Ladda .env om den finns, exportera alla variabler
+# 2) Ladda .env om den finns — exporterar bara giltiga KEY=VALUE-rader
 if [ -f ".env" ]; then
   echo "🔑 Laddar miljövariabler från .env…"
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
+  # Endast rader som börjar med bokstav/underscore följt av = tecken
+  grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' .env |
+  while IFS='=' read -r key val; do
+    # Trimma eventuella omgivande blanksteg
+    key="$(echo "$key"   | xargs)"
+    val="$(echo "$val"   | xargs)"
+    # Hoppa över blanksteg-keys eller kommentarer
+    [[ -z "$key" || "$key" == \#* ]] && continue
+    export "$key=$val"
+  done
 else
-  echo "[WARNING] .env file not found. Continuing, but environment variables may be missing."
+  echo "[WARNING] .env-fil hittades inte. Fortsätter utan extra miljövariabler."
 fi
 
-# 3) Initiera Conda om det finns, och aktivera din miljö
+# 3) Initiera och aktivera Conda-miljö
 ENV_NAME="tradingbot_env"
 if command -v conda &> /dev/null; then
-  echo "🐍 Initierar Conda…"
-  # Källa till conda.sh så att 'conda activate' fungerar i non-login shell
+  echo "🐍 Initierar och aktiverar Conda-miljön: $ENV_NAME"
   # shellcheck disable=SC1091
   source "$(conda info --base)/etc/profile.d/conda.sh"
-  echo "🚀 Aktiverar miljö: $ENV_NAME"
-  # Kontrollera att miljön finns
-  if ! conda env list | grep -q "^$ENV_NAME\s"; then
-    echo "[ERROR] Conda environment '$ENV_NAME' not found."
-    exit 1
-  fi
   conda activate "$ENV_NAME"
 else
-  echo "❌ Fel: Conda hittades inte. Se till att du har installerat Miniconda eller Mambaforge."
+  echo "[ERROR] Conda kunde inte hittas. Installera Miniconda eller Mambaforge först."
   exit 1
 fi
 
-# 4) Kontrollera att scriptet finns
-if [ ! -f "tradingbot.py" ]; then
-  echo "[ERROR] tradingbot.py not found in $SCRIPT_DIR."
-  exit 1
-fi
+# 4) Kontrollera att både api.py och tradingbot.py finns
+for f in api.py tradingbot.py; do
+  if [ ! -f "$f" ]; then
+    echo "[ERROR] Filen '$f' saknas i $SCRIPT_DIR."
+    exit 1
+  fi
+done
 
-echo "[*] Environment and files validated. Launching Tradingbot..."
+echo "[*] Miljö och filer validerade. Startar tjänster..."
 
-# 5) Kör tradingbot-skriptet
-echo "▶️ Kör tradingbot.py…"
-exec python tradingbot.py
+# 5) Trappa signaler för att stänga båda processerna vid Ctrl+C
+cleanup() {
+  echo "🛑 Avslutar API- och bot-processerna..."
+  kill -TERM $API_PID $BOT_PID 2>/dev/null || true
+  exit 0
+}
+trap cleanup SIGINT SIGTERM
+
+# 6) Starta API-servern
+echo "▶️ Startar API-server (api.py)…"
+python api.py &
+API_PID=$!
+
+# 7) Starta tradingbot
+echo "▶️ Startar Tradingbot (tradingbot.py)…"
+python tradingbot.py &
+BOT_PID=$!
+
+# 8) Vänta på att tradingbot-processen avslutas
+wait $BOT_PID
+
+# 9) Städa upp
+cleanup

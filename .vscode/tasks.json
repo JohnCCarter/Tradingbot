@@ -4,7 +4,7 @@
         {
             "label": "Run test_tradingbot.py",
             "type": "shell",
-            "command": "bash -c 'source /opt/conda/etc/profile.d/conda.sh && conda activate tradingbot_env && python test_tradingbot.py'",
+            "command": "conda run -n tradingbot_env python test_tradingbot.py",
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -17,14 +17,14 @@
         {
             "label": "Run tests",
             "type": "shell",
-            "command": "bash -c 'source /opt/conda/etc/profile.d/conda.sh && conda activate tradingbot_env && pytest'",
+            "command": "conda run -n tradingbot_env pytest",
             "group": "test",
             "presentation": { "reveal": "always" }
         },
         {
             "label": "Lint code",
             "type": "shell",
-            "command": "bash -c 'source /opt/conda/etc/profile.d/conda.sh && conda activate tradingbot_env && flake8 .'",
+            "command": "conda run -n tradingbot_env flake8 .",
             "group": "test",
             "presentation": { "reveal": "always" }
         },

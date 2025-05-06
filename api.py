@@ -1,3 +1,4 @@
+import ccxt
 from flask import Flask, jsonify, request, send_file, redirect, url_for, Response
 import subprocess
 import os
@@ -65,6 +66,11 @@ def stop_bot():
     logger.info("API /stop called, bot_process=%s", bot_process)
     if bot_process is not None and bot_process.poll() is None:
         bot_process.terminate()
+        # Also kill any stray tradingbot.py processes
+        try:
+            subprocess.run(["pkill", "-f", "tradingbot.py"], check=False)
+        except Exception as e:
+            logger.warning(f"Failed to pkill tradingbot processes: {e}")
         bot_process = None
         return jsonify({"stopped": True})
     else:
@@ -74,9 +80,15 @@ def stop_bot():
 @app.route("/balance", methods=["GET"])
 def get_balance():
     from tradingbot import fetch_balance
-
-    balance = fetch_balance()
-    return jsonify(balance)
+    try:
+        balance = fetch_balance()
+        return jsonify(balance)
+    except ccxt.AuthenticationError as e:
+        logger.error(f"Authentication error fetching balance: {e}")
+        return jsonify({"error": "AuthenticationError", "message": str(e)}), 401
+    except Exception:
+        logger.exception("Error in /balance:")
+        return jsonify({"error": "Unable to fetch balance."}), 500
 
 
 @app.route("/logs", methods=["GET"])
@@ -110,20 +122,73 @@ def get_orders():
 def order_history():
     log_path = os.path.join(os.path.dirname(__file__), "order_status_log.txt")
     if not os.path.exists(log_path):
-        return jsonify({"orders": []})
+        return jsonify({"orders": [], "status": "no_file"})
+    
     symbol = request.args.get("symbol")
     date = request.args.get("date")  # format: 'YYYY-MM-DD'
-    orders = []
+    debug = request.args.get("debug") == "true"
+    
+    # Förbered ett mer detaljerat svar
+    response = {
+        "orders": [],
+        "status": "ok",
+        "debug_info": {} if debug else None
+    }
+    
+    # För debugläge, samla alla unika datum vi ser i loggfilen
+    unique_dates = set()
+    total_lines = 0
+    matched_order_count = 0
+    
     with open(log_path, "r") as f:
         for line in f:
-            if "EXECUTED" not in line and "CANCELED" not in line:
-                continue  # Endast orderhändelser
+            total_lines += 1
+            
+            # Extrahera datum från början av raden (om möjligt)
+            try:
+                line_date = line.split(" ")[0]
+                if debug:
+                    unique_dates.add(line_date)
+            except:
+                pass
+            
+            # Filtrera för orderhändelser
+            if "EXECUTED" not in line and "CANCELED" not in line and "CANCELLED" not in line:
+                continue
+            
+            # Använd symbol-filter om angivet
             if symbol and symbol not in line:
                 continue
-            if date and not line.startswith(date):
-                continue
-            orders.append(line.strip())
-    return jsonify({"orders": orders[-20:]})  # Returnera max 20 senaste orderhändelser
+                
+            # Använd datumfilter om angivet - jämför med början av raden
+            if date:
+                if not line.startswith(date):
+                    # Om inte exakt match i början, prova lite mer flexibelt
+                    if date not in line.split(" ")[0]:
+                        continue
+            
+            matched_order_count += 1
+            response["orders"].append(line.strip())
+    
+    # Begränsa till de senaste 20 posterna
+    response["orders"] = response["orders"][-20:]
+    
+    # Lägg till debugging-information om det är aktiverat
+    if debug:
+        response["debug_info"] = {
+            "total_lines": total_lines,
+            "matched_order_count": matched_order_count,
+            "unique_dates": sorted(list(unique_dates)),
+            "date_filter": date,
+            "symbol_filter": symbol
+        }
+    
+    # Logga sammanfattning
+    logger.info(f"Hittade {matched_order_count} orderhistorik-poster" +
+                (f" för datum {date}" if date else "") +
+                (f" och symbol {symbol}" if symbol else ""))
+    
+    return jsonify(response)
 
 
 @app.route("/order", methods=["POST"])
@@ -190,38 +255,41 @@ def serve_dashboard():
 
 @app.route("/openorders", methods=["GET"])
 def get_open_orders():
+    from tradingbot import exchange, SANDBOX
+    # In sandbox/testnet mode, return empty list without real API call
+    if SANDBOX:
+        return jsonify({"open_orders": []})
     try:
-        from tradingbot import exchange
-
-        # print('[DEBUG] /openorders: Försöker hämta aktiva ordrar från Bitfinex...')
-        open_orders = exchange.private_post_auth_r_orders({})
-        # print(f'[DEBUG] /openorders: API-svar: {open_orders}')
+        # Use CCXT fetch_open_orders to retrieve active orders
+        open_orders = exchange.fetch_open_orders()
         result = []
-        for o in open_orders:
-            # print(f'[DEBUG] /openorders: Order: {o}')
-            # Bitfinex returnerar en lista, inte en dict
-            result.append(
-                {
-                    "id": o[0],
-                    "symbol": o[3],
-                    "type": o[8],
-                    "side": "buy" if float(o[6]) > 0 else "sell",
-                    "price": o[16],
-                    "amount": o[6],
-                    "status": o[13],
-                    "datetime": o[5],
-                }
-            )
-        print(f"[DEBUG] /openorders: Returnerar {len(result)} ordrar")
+        for order in open_orders:
+            result.append({
+                "id": order.get("id"),
+                "symbol": order.get("symbol"),
+                "type": order.get("type"),
+                "side": order.get("side"),
+                "price": order.get("price"),
+                "amount": order.get("amount"),
+                "status": order.get("status"),
+                "datetime": order.get("datetime"),
+            })
         return jsonify({"open_orders": result})
+    except ccxt.AuthenticationError as e:
+        logger.error(f"Authentication error fetching open orders: {e}")
+        return jsonify({"error": "AuthenticationError", "message": str(e)}), 401
     except Exception:
         logger.exception("Error in /openorders:")
         return jsonify({"error": "Unable to fetch open orders."}), 500
 
 
 if __name__ == "__main__":
+    import os
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
+    # Load environment variables (including API_PORT)
     load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
-    app.run(host="0.0.0.0", port=5000)
+    # Use API_PORT env var or default to 5000
+    api_port = int(os.getenv("API_PORT", "5000"))
+    app.run(host="0.0.0.0", port=api_port)

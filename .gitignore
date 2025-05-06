@@ -173,6 +173,13 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# IDE/editor directories
+.vscode/
+.idea/
+
+# macOS FS artifacts
+.DS_Store
+
 Miniconda3-latest-Linux-x86_64.sh
 order_status_log.txt
 backtest_result.json

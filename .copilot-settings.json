@@ -1,0 +1,8 @@
+{
+  "autoFetchCodeContext": true,
+  "contextGatheringTools": [
+    "file_search",
+    "grep_search",
+    "read_file"
+  ]
+}

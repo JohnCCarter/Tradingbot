@@ -21,11 +21,7 @@ if ! command -v conda &> /dev/null; then
   wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "$tmp_installer"
   bash "$tmp_installer" -b -p "$HOME/miniconda3"
   rm "$tmp_installer"
-  
-  # Konfigurera conda-kanaler för att eliminera FutureWarnings
-echo "⚙️ Konfigurerar conda-kanaler…"
-  "$HOME/miniconda3/bin/conda" config --system --add channels conda-forge
-  "$HOME/miniconda3/bin/conda" config --system --add channels defaults
+  echo "✅ Conda installerat."
 else
   echo "✅ Conda redan installerat."
 fi
@@ -35,10 +31,15 @@ if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
   # shellcheck disable=SC1091
   source "$HOME/miniconda3/etc/profile.d/conda.sh"
 else
-  conda init bash
+  # Om annan conda-base finns, ladda den istället
   # shellcheck disable=SC1091
-  source "$HOME/.bashrc"
+  source "$(conda info --base)/etc/profile.d/conda.sh"
 fi
+
+# 4b) Säkerställ explicita conda-kanaler för att undvika FutureWarnings
+echo "⚙️ Säkerställer conda-kanaler…"
+conda config --add channels conda-forge
+conda config --add channels defaults
 
 # 5) Klona eller uppdatera repot
 if [ ! -d "$bot_dir" ]; then
@@ -54,7 +55,8 @@ fi
 # 6) Byt till botkatalogen
 cd "$bot_dir"
 
-# 7) Ladda .env om den finns\if [ -f ".env" ]; then
+# 7) Ladda .env om den finns
+if [ -f ".env" ]; then
   echo "🔑 Laddar miljövariabler från .env…"
   set -a
   # shellcheck disable=SC1091
