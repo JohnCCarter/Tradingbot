@@ -26,9 +26,6 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
 # 3) Lägg conda-env bin-katalog först i PATH
 ENV PATH="/opt/miniconda/envs/tradingbot_env/bin:$PATH"
 
-# Kopiera .env för att load_dotenv ska hitta API-nycklarna
-COPY .env /app/
-
 # 4) Kopiera resten av koden
 COPY . /app/
 
