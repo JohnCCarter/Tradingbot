@@ -2,610 +2,1722 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tradingbot Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="strategy_performance.js"></script>
     <style>
         body {
-            font-size: 12px; /* Ändra här så påverkas all text på sidan */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f9fc;
+            display: flex;
         }
-        h1 { color: #333; }
-        .status { margin-bottom: 1em; }
-        button { margin-right: 1em; }
-        .section {
-            margin-bottom: 2em;
-            background: #fff;
+        
+        #sidebar {
+            width: 220px;
+            background: #2c3e50;
+            color: #fff;
+            height: 100vh;
+            position: fixed;
+            padding: 20px 0;
+        }
+        
+        #sidebar h2 {
+            padding: 0 20px;
+            margin-top: 0;
+            font-size: 20px;
+        }
+        
+        #sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        #sidebar li {
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        #sidebar li:hover, 
+        #sidebar li.active {
+            background: #34495e;
+            border-left: 4px solid #3498db;
+        }
+        
+        #content {
+            width: calc(100% - 220px);
+            margin-left: 220px;
+            padding: 20px;
+        }
+        
+        .dashboard-section {
+            background: white;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            padding: 1.5em;
-            max-width: 1000px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+            padding: 20px;
+            display: none;
         }
+        
+        .dashboard-section.active {
+            display: block;
+        }
+        
+        h2 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        
+        .stats-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: #fff;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            flex: 1;
+            min-width: 180px;
+            border-left: 3px solid #3498db;
+            position: relative;
+        }
+        
+        .stat-card h3 {
+            margin: 0;
+            color: #7f8c8d;
+            font-size: 14px;
+            font-weight: normal;
+        }
+        
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0 0;
+            color: #2c3e50;
+        }
+        
+        .chart-container {
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        
         table {
-            background: #222;
-            color: #eee;
-            padding: 1em;
-            border-radius: 5px;
-            max-width: 900px;
             width: 100%;
-            margin-top: 1em;
             border-collapse: collapse;
         }
-        th {
-            font-size: 18px;
-            background: #333;
-            padding: 0.5em 1em;
+        
+        thead {
+            background: #f2f6fa;
         }
-        td {
-            font-size: 16px;
-            padding: 0.5em 1em;
+        
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
         }
-        .status-executed {
-            color: #2ecc40 !important;
-            font-weight: bold;
-            background: #eaffea !important;
-            border-radius: 4px;
-            border: 1px solid #2ecc40;
+        
+        tr:hover {
+            background-color: #f5f5f5;
         }
-        .status-canceled {
-            color: #ff4136 !important;
-            font-weight: bold;
-            background: #ffeaea !important;
-            border-radius: 4px;
-            border: 1px solid #ff4136;
+        
+        form {
+            margin-bottom: 20px;
         }
-        .status-other {
-            color: #ffb700 !important;
-            font-weight: bold;
-            background: #fffbe6 !important;
-            border-radius: 4px;
-            border: 1px solid #ffb700;
-        }
-        .card-title {
-            font-size: 1.3em;
-            font-weight: bold;
-            margin-bottom: 0.5em;
-            display: flex;
-            align-items: center;
-        }
-        .card-title i {
-            margin-right: 0.5em;
-        }
-        .balance-key { font-weight: bold; }
-        .balance-row { border-bottom: 1px solid #444; }
-        @media (max-width: 700px) {
-            table, th, td { font-size: 13px; }
-            .section { padding: 0.5em; }
-        }
-        body, table, th, td {
-    font-size: 15px; /* Ändra till önskad storlek */
-}
-        .scroll-table {
+        
+        label {
             display: block;
-            max-height: 350px;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        input[type=text],
+        input[type=number],
+        input[type=date],
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        button, .button {
+            background: #3498db;
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover, .button:hover {
+            background: #2980b9;
+        }
+        
+        .grid {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .grid-column {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .status-executed {
+            color: #27ae60;
+            font-weight: 500;
+        }
+        
+        .status-canceled {
+            color: #e74c3c;
+        }
+        
+        @media (max-width: 768px) {
+            #sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+            }
+            
+            #content {
+                width: 100%;
+                margin-left: 0;
+            }
+            
+            body {
+                flex-direction: column;
+            }
+            
+            .grid {
+                flex-direction: column;
+            }
+            
+            .grid-column {
+                width: 100%;
+            }
+        }
+        
+        /* Ny stilsättning för utökad statistik och visualiseringar */
+        .advanced-stat-card {
+            background: #fff;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            position: relative;
+            margin-bottom: 15px;
+        }
+        
+        .advanced-stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+        }
+        
+        .mini-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+        }
+        
+        .mini-stat {
+            text-align: center;
+        }
+        
+        .mini-stat .label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+        
+        .mini-stat .value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .positive {
+            color: #27ae60 !important;
+        }
+        
+        .negative {
+            color: #e74c3c !important;
+        }
+        
+        .streak-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .streak-win {
+            background-color: #27ae60;
+        }
+        
+        .streak-loss {
+            background-color: #e74c3c;
+        }
+        
+        .debug-log {
+            font-family: monospace;
+            font-size: 12px;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 200px;
             overflow-y: auto;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            background: #222;
+        }
+        
+        .debug-log .error {
+            color: #e74c3c;
+        }
+        
+        .debug-log .warning {
+            color: #f39c12;
+        }
+        
+        .debug-log .info {
+            color: #3498db;
+        }
+        
+        /* Tabs för att organisera olika visualiseringar */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 15px;
+        }
+        
+        .tab {
+            padding: 10px 15px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            margin-right: 5px;
+            border-radius: 4px 4px 0 0;
+        }
+        
+        .tab.active {
+            background: #f5f7fa;
+            border-color: #ddd;
+            border-bottom: 1px solid #f5f7fa;
+            margin-bottom: -1px;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 15px 0;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        @media (max-width: 576px) {
+            .mini-stat-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-..." crossorigin="anonymous">
-    <!-- Chart.js CDN -->
-    <!-- Optional FontAwesome -->
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
 </head>
-<body class="bg-light">
-  <!-- Navbar -->
-  <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm mb-4">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="#">Tradingbot</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav">
-          <li class="nav-item"><a class="nav-link" href="#status-section">Status</a></li>
-          <li class="nav-item"><a class="nav-link" href="#balance-section">Saldo</a></li>
-          <li class="nav-item"><a class="nav-link" href="#orders-section">Senaste ordrar</a></li>
-          <li class="nav-item"><a class="nav-link" href="#history-section">Orderhistorik</a></li>
-          <li class="nav-item"><a class="nav-link" href="#openorders-section">Aktiva ordrar</a></li>
-          <li class="nav-item"><a class="nav-link" href="#chart-section">Prisgraf</a></li>
+<body>
+    <div id="sidebar">
+        <h2>Tradingbot</h2>
+        <ul id="nav-menu">
+            <li data-section="overview" class="active">Översikt</li>
+            <li data-section="trading">Trading</li>
+            <li data-section="order-history">Orderhistorik</li>
+            <li data-section="price-chart">Prisgraf</li>
+            <li data-section="configuration">Konfiguration</li>
+            <li data-section="strategy-performance">Strategi-prestanda</li>
         </ul>
-      </div>
     </div>
-  </nav>
-  <div class="container-fluid">
-    <div class="row">
-      <div class="col-md-3 d-none d-md-block">
-        <!-- Sidebar navigation -->
-        <div class="list-group position-sticky" style="top:100px;">
-          <a href="#status-section" class="list-group-item list-group-item-action">Status</a>
-          <a href="#balance-section" class="list-group-item list-group-item-action">Saldo</a>
-          <a href="#orders-section" class="list-group-item list-group-item-action">Senaste ordrar</a>
-          <a href="#history-section" class="list-group-item list-group-item-action">Orderhistorik</a>
-          <a href="#openorders-section" class="list-group-item list-group-item-action">Aktiva ordrar</a>
-          <a href="#chart-section" class="list-group-item list-group-item-action">Prisgraf</a>
+    
+    <div id="content">
+        <!-- Översikt -->
+        <div id="overview-section" class="dashboard-section active">
+            <h2>Översikt</h2>
+            <div class="stats-container">
+                <div class="stat-card">
+                    <h3>Status</h3>
+                    <div class="value" id="bot-status">Laddar...</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Balanser</h3>
+                    <div class="value" id="balance-value">Laddar...</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Aktuellt pris</h3>
+                    <div class="value" id="current-price-value">Laddar...</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Senaste order</h3>
+                    <div class="value" id="latest-order-value">-</div>
+                </div>
+            </div>
+            
+            <div class="grid">
+                <div class="grid-column">
+                    <h3>Senaste systemhändelser</h3>
+                    <div id="logs-container" style="height: 200px; overflow-y: scroll; background: #f5f7fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px;">
+                        Laddar loggar...
+                    </div>
+                </div>
+                <div class="grid-column">
+                    <h3>Öppna ordrar</h3>
+                    <div id="open-orders-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Typ</th>
+                                    <th>Sida</th>
+                                    <th>Pris</th>
+                                    <th>Mängd</th>
+                                </tr>
+                            </thead>
+                            <tbody id="open-orders-table">
+                                <tr>
+                                    <td colspan="5">Laddar ordrar...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
-      <div class="col-md-9">
-        <!-- Main content -->
-        <section id="status-section" class="mb-4">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <div class="section status">
-                <strong>Status:</strong> <span id="bot-status">Laddar...</span>
-                <button onclick="startBot()">Starta bot</button>
-                <button onclick="stopBot()">Stoppa bot</button>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section id="balance-section" class="mb-4">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <div class="section">
-                <div class="card-title"><i>💰</i> Saldo</div>
-                <table id="balance-table"></table>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section id="orders-section" class="mb-4">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <div class="section">
-                <div class="card-title"><i>📋</i> Senaste ordrar
-                    <span id="orders-summary" style="margin-left:1em;font-size:0.9em;color:#888;"></span>
-                </div>
-                <div class="scroll-table">
-                    <table id="orders-table">
-                        <thead><tr><th>Tid</th><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section id="history-section" class="mb-4">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <div class="section">
-                <div class="card-title"><i>📜</i> Orderhistorik (max 10 rader)
-                    <span id="orderhistory-summary" style="margin-left:1em;font-size:0.9em;color:#888;"></span>
-                </div>
-                <form id="orderhistory-form" onsubmit="return fetchOrderHistory();">
-                    <label>Symbol:
-                        <input type="text" id="history-symbol" placeholder="t.ex. tBTCUSD">
-                    </label>
-                    <label>Datum (YYYY-MM-DD):
-                        <input type="text" id="history-date" placeholder="2025-04-29">
-                    </label>
-                    <button type="submit">Visa orderhistorik</button>
-                </form>
-                <div class="scroll-table">
-                    <table id="orderhistory-table">
-                        <thead><tr><th>Tid</th><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section id="openorders-section" class="mb-4">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <div class="section">
-                <div class="card-title"><i>🟢</i> Aktiva ordrar</div>
-                <table id="openorders-table">
-                    <thead><tr><th>Order-ID</th><th>Symbol</th><th>Typ</th><th>Side</th><th>Pris</th><th>Mängd</th><th>Status</th><th>Tid</th></tr></thead>
-                    <tbody></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section id="chart-section" class="mb-4">
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <div class="section">
-                <strong>Senaste pris:</strong>
-                <span id="realtime-price">Laddar...</span>
-              </div>
-              <div class="section">
-                <strong>Strategi-parametrar (config.json):</strong>
-                <form id="config-form" onsubmit="return saveConfig();">
-                    <textarea id="config-json" rows="12" cols="80" style="font-family:monospace;"></textarea><br>
-                    <button type="submit">Spara ändringar</button>
-                    <span id="config-result"></span>
-                </form>
-              </div>
-              <div class="section">
-                <strong>Skapa order:</strong>
-                <form id="order-form" onsubmit="return sendOrder();">
-                    <label>Symbol:
-                        <select id="order-symbol">
+        
+        <!-- Trading -->
+        <div id="trading-section" class="dashboard-section">
+            <h2>Trading</h2>
+            <form id="order-form">
+                <div class="grid">
+                    <div class="grid-column">
+                        <label for="symbol">Symbol:</label>
+                        <select id="symbol" name="symbol" required>
                             <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
                             <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
                             <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
                         </select>
-                    </label>
-                    <label>Typ:
-                        <select id="order-type">
+                        
+                        <label for="order-type">Order-typ:</label>
+                        <select id="order-type" name="type" required>
                             <option value="buy">Köp</option>
                             <option value="sell">Sälj</option>
                         </select>
-                    </label>
-                    <label>Mängd:
-                        <input type="number" id="order-amount" value="0.001" step="0.0001" min="0.0001" required>
-                    </label>
-                    <label>Pris (valfritt):
-                        <input type="number" id="order-price" step="0.01" min="0">
-                    </label>
-                    <button type="submit">Skicka order</button>
-                </form>
-                <div id="order-result"></div>
-              </div>
-              <div class="section" id="price-chart-section">
-                <div class="card-title"><i>📈</i> Prisgraf (senaste 50 värden)
-                    <select id="chart-symbol-select" style="margin-left:1em;">
-                        <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
-                        <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
-                        <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
-                    </select>
+                    </div>
+                    <div class="grid-column">
+                        <label for="amount">Mängd:</label>
+                        <input type="number" id="amount" name="amount" step="0.001" min="0.001" value="0.001" required>
+                        
+                        <label for="price">Pris (lämna tomt för marknadspris):</label>
+                        <input type="number" id="price" name="price" step="0.01">
+                    </div>
                 </div>
-                <canvas id="priceChart" height="120"></canvas>
-              </div>
+                <button type="submit">Skicka order</button>
+                <div id="order-status" style="margin-top: 10px;"></div>
+            </form>
+            <br>
+            <div>
+                <h3>Order-kontroller</h3>
+                <button id="start-btn" class="button">Starta bot</button>
+                <button id="stop-btn" class="button">Stoppa bot</button>
+                <span id="bot-control-status" style="margin-left: 10px;"></span>
             </div>
-          </div>
-        </section>
-      </div>
+        </div>
+        
+        <!-- Orderhistorik -->
+        <div id="order-history-section" class="dashboard-section">
+            <h2>Orderhistorik</h2>
+            <form id="history-filter-form">
+                <div class="grid">
+                    <div class="grid-column">
+                        <label for="history-symbol">Symbol:</label>
+                        <select id="history-symbol" name="symbol">
+                            <option value="">Alla symboler</option>
+                            <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
+                            <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
+                            <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
+                        </select>
+                    </div>
+                    <div class="grid-column">
+                        <label for="history-date">Datum:</label>
+                        <input type="date" id="history-date" name="date">
+                    </div>
+                </div>
+                <button type="submit">Filtrera</button>
+            </form>
+            <br>
+            <div id="orders-container" style="height: 500px; overflow-y: scroll;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tid</th>
+                            <th>Order-ID</th>
+                            <th>Status</th>
+                            <th>Info</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-table">
+                        <tr>
+                            <td colspan="4">Laddar orderhistorik...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Prisgraf -->
+        <div id="price-chart-section" class="dashboard-section">
+            <h2>Prisgraf</h2>
+            <div>
+                <label for="chart-symbol-select">Symbol:</label>
+                <select id="chart-symbol-select" style="width: auto; display: inline-block;">
+                    <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
+                    <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
+                    <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
+                </select>
+            </div>
+            <div class="chart-container">
+                <canvas id="priceChart"></canvas>
+            </div>
+            <div id="real-time-updates">
+                <p>Senaste pris: <span id="live-price">Laddar...</span></p>
+            </div>
+        </div>
+        
+        <!-- Konfiguration -->
+        <div id="configuration-section" class="dashboard-section">
+            <h2>Konfiguration</h2>
+            <form id="config-form">
+                <label for="config-text">Konfiguration (JSON):</label>
+                <textarea id="config-text" rows="15" style="width: 100%; padding: 10px; font-family: monospace;"></textarea>
+                <br>
+                <button type="submit" style="margin-top: 10px;">Spara konfiguration</button>
+                <div id="config-status" style="margin-top: 10px;"></div>
+            </form>
+        </div>
+        
+        <!-- Strategi-prestanda -->
+        <div id="strategy-performance-section" class="dashboard-section">
+            <h2>Strategi-prestanda</h2>
+            
+            <!-- Filter form -->
+            <form id="performance-filter-form">
+                <div class="grid">
+                    <div class="grid-column">
+                        <label for="performance-symbol">Symbol:</label>
+                        <select id="performance-symbol" name="symbol">
+                            <option value="">Alla symboler</option>
+                            <option value="tTESTBTC:TESTUSD">tTESTBTC:TESTUSD</option>
+                            <option value="tTESTETH:TESTUSD">tTESTETH:TESTUSD</option>
+                            <option value="tTESTLTC:TESTUSD">tTESTLTC:TESTUSD</option>
+                        </select>
+                    </div>
+                    <div class="grid-column">
+                        <label for="performance-start-date">Från datum:</label>
+                        <input type="date" id="performance-start-date" name="start_date">
+                    </div>
+                    <div class="grid-column">
+                        <label for="performance-end-date">Till datum:</label>
+                        <input type="date" id="performance-end-date" name="end_date">
+                    </div>
+                    <div class="grid-column">
+                        <label for="detail-level">Detaljnivå:</label>
+                        <select id="detail-level" name="detail_level">
+                            <option value="standard">Standard</option>
+                            <option value="extended">Utökad</option>
+                            <option value="full">Fullständig</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit">Uppdatera statistik</button>
+            </form>
+            
+            <!-- Debugging info -->
+            <div class="advanced-stat-card" style="margin-top: 20px;">
+                <div class="grid">
+                    <div class="grid-column" style="flex: 2;">
+                        <h3>Bearbetningsinformation</h3>
+                        <div id="performance-debug-log" class="debug-log">
+                            <!-- Debug logs will appear here -->
+                        </div>
+                    </div>
+                    <div class="grid-column" style="flex: 1;">
+                        <h3>Datasammanfattning</h3>
+                        <div class="mini-stat-grid">
+                            <div class="mini-stat">
+                                <div class="label">Bearbetade rader</div>
+                                <div id="processing-total-lines" class="value">-</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Filtrerade rader</div>
+                                <div id="processing-filtered-lines" class="value">-</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Parsningsfel</div>
+                                <div id="processing-parse-errors" class="value">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Overview stats -->
+            <div class="stats-container" style="margin-top: 20px;">
+                <div class="stat-card">
+                    <h3>Totala trades</h3>
+                    <div id="total-trades" class="value">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Köp</h3>
+                    <div id="total-buys" class="value">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Sälj</h3>
+                    <div id="total-sells" class="value">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Utförda</h3>
+                    <div id="total-executed" class="value">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Avbrutna</h3>
+                    <div id="total-cancelled" class="value">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Vinst/Förlust</h3>
+                    <div id="profit-loss" class="value">$0.00</div>
+                </div>
+            </div>
+            
+            <!-- Advanced metrics -->
+            <div class="advanced-stat-card" style="margin-top: 20px;">
+                <h3>Avancerade metriker</h3>
+                <div class="grid">
+                    <div class="grid-column">
+                        <div class="mini-stat-grid">
+                            <div class="mini-stat">
+                                <div class="label">Genomsnittlig vinst/trade</div>
+                                <div id="avg-profit" class="value">$0.00</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Vinstandel</div>
+                                <div id="win-rate" class="value">0%</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Risk/Reward</div>
+                                <div id="risk-reward" class="value">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid-column"></div>
+                        <div class="mini-stat-grid">
+                            <div class="mini-stat"></div>
+                                <div class="label">Genomsnittligt köppris</div>
+                                <div id="avg-buy-price" class="value">$0.00</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Genomsnittligt säljpris</div>
+                                <div id="avg-sell-price" class="value">$0.00</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Prisskillnad (%)</div>
+                                <div id="price-diff-percent" class="value">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid-column"></div>
+                        <div class="mini-stat-grid">
+                            <div class="mini-stat">
+                                <div class="label">Utförandetal</div>
+                                <div id="execution-rate" class="value">0%</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Avbrottstal</div>
+                                <div id="cancellation-rate" class="value">0%</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Köp/Sälj-ratio</div>
+                                <div id="buy-sell-ratio" class="value">0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Streaks -->
+            <div class="advanced-stat-card" style="margin-top: 20px;">
+                <h3>Vinstserier</h3>
+                <div class="grid">
+                    <div class="grid-column">
+                        <div class="mini-stat-grid">
+                            <div class="mini-stat">
+                                <div class="label">Längsta vinstserie</div>
+                                <div id="longest-win-streak" class="value">0</div>
+                            </div>
+                            <div class="mini-stat">
+                                <div class="label">Längsta förlust-serie</div>
+                                <div id="longest-loss-streak" class="value">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid-column">
+                        <div class="mini-stat">
+                            <div class="label">Nuvarande serie</div>
+                            <div id="current-streak" class="value">
+                                <span class="streak-indicator"></span>
+                                <span id="current-streak-value">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Charts tabs -->
+            <div class="advanced-stat-card" style="margin-top: 20px;">
+                <div class="tabs">
+                    <div class="tab active" data-tab="overview-charts">Översikt</div>
+                    <div class="tab" data-tab="daily-charts">Daglig prestanda</div>
+                    <div class="tab" data-tab="time-distribution">Tidsdistribution</div>
+                </div>
+                
+                <!-- Overview charts tab content -->
+                <div class="tab-content active" id="overview-charts">
+                    <div class="grid">
+                        <div class="grid-column">
+                            <h3>Översikt - Köp vs. Sälj</h3>
+                            <div class="chart-container">
+                                <canvas id="performance-overview-chart"></canvas>
+                            </div>
+                        </div>
+                        <div class="grid-column">
+                            <h3>Prestanda per veckodag</h3>
+                            <div class="chart-container">
+                                <canvas id="weekly-distribution-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Daily performance tab content -->
+                <div class="tab-content" id="daily-charts">
+                    <h3>Daglig handelsprestanda</h3>
+                    <div class="chart-container" style="height: 400px;">
+                        <canvas id="daily-performance-chart"></canvas>
+                    </div>
+                    <h3>Daglig vinst/förlust</h3>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="daily-pnl-chart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Time distribution tab content -->
+                <div class="tab-content" id="time-distribution">
+                    <h3>Handelsaktivitet per timme</h3>
+                    <div class="chart-container">
+                        <canvas id="hourly-activity-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Symbol performance -->
+            <div class="advanced-stat-card" style="margin-top: 20px;">
+                <h3>Prestanda per symbol</h3>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Trades</th>
+                                <th>Köp</th>
+                                <th>Sälj</th>
+                                <th>Volym (USD)</th>
+                                <th>Utförda</th>
+                                <th>P&L</th>
+                            </tr>
+                        </thead>
+                        <tbody id="symbol-performance-table">
+                            <tr>
+                                <td colspan="7">Ingen data tillgänglig</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Trades list -->
+            <div class="advanced-stat-card" style="margin-top: 20px;">
+                <h3>Senaste trades</h3>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tid</th>
+                                <th>Symbol</th>
+                                <th>Typ</th>
+                                <th>Pris</th>
+                                <th>Mängd</th>
+                                <th>Värde</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="performance-trades-table">
+                            <tr>
+                                <td colspan="7">Laddar trades...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+        </div>
     </div>
-  </div>
-  <!-- Bootstrap JS Bundle -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-..." crossorigin="anonymous"></script>
+    
     <script>
-    const apiBase = '';
-
-    function updateStatus() {
-        fetch(apiBase + '/status')
-            .then(r => r.json())
-            .then(d => {
-                document.getElementById('bot-status').textContent = d.bot_running ? 'IGÅNG' : 'STOPPAD';
+    document.addEventListener('DOMContentLoaded', function() {
+        // Navigation setup
+        const navItems = document.querySelectorAll('#nav-menu li');
+        const sections = document.querySelectorAll('.dashboard-section');
+        
+        navItems.forEach(item => {
+            item.addEventListener('click', function() {
+                const sectionId = this.getAttribute('data-section') + '-section';
+                
+                // Hide all sections and deselect all nav items
+                sections.forEach(section => section.classList.remove('active'));
+                navItems.forEach(navItem => navItem.classList.remove('active'));
+                
+                // Show selected section and select nav item
+                document.getElementById(sectionId).classList.add('active');
+                this.classList.add('active');
             });
-    }
-    function startBot() {
-        fetch(apiBase + '/start', { method: 'POST' })
-            .then(async response => {
-                const data = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    const msg = data.reason || data.error || 'Kunde inte starta bot.';
-                    alert('Fel: ' + msg);
-                }
-            })
-            .catch(err => alert('Fel vid anrop: ' + err))
-            .finally(() => setTimeout(updateStatus, 1000));
-    }
-
-    function stopBot() {
-        fetch(apiBase + '/stop', { method: 'POST' })
-            .then(async response => {
-                const data = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    const msg = data.reason || data.error || 'Kunde inte stoppa bot.';
-                    alert('Fel: ' + msg);
-                }
-            })
-            .catch(err => alert('Fel vid anrop: ' + err))
-            .finally(() => setTimeout(updateStatus, 1000));
-    }
-
-    function updateBalance() {
-        fetch(apiBase + '/balance')
-            .then(r => r.json())
-            .then(d => {
-                const table = document.getElementById('balance-table');
-                table.innerHTML = '';
-                if (!d || typeof d !== 'object') {
-                    table.innerHTML = '<tr><td>Ingen data</td></tr>';
-                    return;
-                }
-                const showCurrencies = ['BTC', 'USD', 'USDT', 'EUR'];
-                let shown = false;
-                if (d.total) {
-                    for (const key of Object.keys(d.total)) {
-                        table.innerHTML += `<tr class='balance-row'><td class='balance-key'>${key} (Total)</td><td>${d.total[key]}</td></tr>`;
-                        shown = true;
+        });
+        
+        // API base URL
+        const apiBase = window.location.origin;
+        
+        // Bot status functions
+        function updateBotStatus() {
+            fetch(`${apiBase}/status`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('bot-status').textContent = data.bot_running ? 'Aktiv' : 'Stoppad';
+                    document.getElementById('bot-status').style.color = data.bot_running ? '#27ae60' : '#e74c3c';
+                })
+                .catch(error => console.error('Fel vid hämtning av botstatus:', error));
+        }
+        
+        // Update balance function
+        function updateBalance() {
+            fetch(`${apiBase}/balance`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.total) {
+                        const balances = [];
+                        for (const [currency, amount] of Object.entries(data.total)) {
+                            balances.push(`${currency}: ${amount}`);
+                        }
+                        document.getElementById('balance-value').textContent = balances.join(', ');
+                    } else {
+                        document.getElementById('balance-value').textContent = 'Ingen data';
                     }
-                }
-                if (d.free) {
-                    for (const key of Object.keys(d.free)) {
-                        table.innerHTML += `<tr class='balance-row'><td class='balance-key'>${key} (Free)</td><td>${d.free[key]}</td></tr>`;
-                        shown = true;
+                })
+                .catch(error => console.error('Fel vid hämtning av balanser:', error));
+        }
+        
+        // Update current price function
+        function updateCurrentPrice() {
+            fetch(`${apiBase}/ticker`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.price) {
+                        document.getElementById('current-price-value').textContent = `${data.price} (${data.symbol || ''})`;
+                    } else {
+                        document.getElementById('current-price-value').textContent = 'Ingen data';
                     }
+                })
+                .catch(error => console.error('Fel vid hämtning av aktuellt pris:', error));
+        }
+        
+        // Update open orders function
+        function updateOpenOrders() {
+            fetch(`${apiBase}/openorders`)
+                .then(response => response.json())
+                .then(data => {
+                    const tbody = document.getElementById('open-orders-table');
+                    tbody.innerHTML = '';
+                    
+                    if (data && data.open_orders && data.open_orders.length > 0) {
+                        data.open_orders.forEach(order => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${order.symbol || ''}</td>
+                                <td>${order.type || ''}</td>
+                                <td>${order.side || ''}</td>
+                                <td>${order.price || ''}</td>
+                                <td>${order.amount || ''}</td>
+                            `;
+                            tbody.appendChild(row);
+                        });
+                    } else {
+                        const row = document.createElement('tr');
+                        row.innerHTML = '<td colspan="5">Inga öppna ordrar</td>';
+                        tbody.appendChild(row);
+                    }
+                })
+                .catch(error => console.error('Fel vid hämtning av öppna ordrar:', error));
+        }
+        
+        // Update logs function
+        function updateLogs() {
+            fetch(`${apiBase}/logs`)
+                .then(response => response.json())
+                .then(data => {
+                    const logsContainer = document.getElementById('logs-container');
+                    
+                    if (data && data.logs) {
+                        logsContainer.innerHTML = data.logs.join('<br>');
+                        logsContainer.scrollTop = logsContainer.scrollHeight; // Auto-scroll to bottom
+                    } else {
+                        logsContainer.textContent = 'Inga loggar tillgängliga';
+                    }
+                })
+                .catch(error => console.error('Fel vid hämtning av loggar:', error));
+        }
+        
+        // Bot control functions
+        document.getElementById('start-btn').addEventListener('click', function() {
+            fetch(`${apiBase}/start`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    const statusEl = document.getElementById('bot-control-status');
+                    if (data.success) {
+                        statusEl.textContent = 'Bot startad';
+                        statusEl.style.color = '#27ae60';
+                    } else {
+                        statusEl.textContent = `Fel: ${data.error || 'Okänt fel'}`;
+                        statusEl.style.color = '#e74c3c';
+                    }
+                    setTimeout(() => updateBotStatus(), 1000);
+                })
+                .catch(error => {
+                    console.error('Fel vid start av bot:', error);
+                    const statusEl = document.getElementById('bot-control-status');
+                    statusEl.textContent = `Fel: ${error.message}`;
+                    statusEl.style.color = '#e74c3c';
+                });
+        });
+        
+        document.getElementById('stop-btn').addEventListener('click', function() {
+            fetch(`${apiBase}/stop`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    const statusEl = document.getElementById('bot-control-status');
+                    if (data.success) {
+                        statusEl.textContent = 'Bot stoppad';
+                        statusEl.style.color = '#e74c3c';
+                    } else {
+                        statusEl.textContent = `Fel: ${data.error || 'Okänt fel'}`;
+                        statusEl.style.color = '#e74c3c';
+                    }
+                    setTimeout(() => updateBotStatus(), 1000);
+                })
+                .catch(error => {
+                    console.error('Fel vid stopp av bot:', error);
+                    const statusEl = document.getElementById('bot-control-status');
+                    statusEl.textContent = `Fel: ${error.message}`;
+                    statusEl.style.color = '#e74c3c';
+                });
+        });
+        
+        // Order form submission
+        document.getElementById('order-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const symbol = document.getElementById('symbol').value;
+            const orderType = document.getElementById('order-type').value;
+            const amount = document.getElementById('amount').value;
+            const price = document.getElementById('price').value;
+            
+            const payload = {
+                symbol: symbol,
+                type: orderType,
+                amount: parseFloat(amount)
+            };
+            
+            if (price) {
+                payload.price = parseFloat(price);
+            }
+            
+            fetch(`${apiBase}/order`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.getElementById('order-status');
+                if (data.success) {
+                    statusEl.textContent = `Order skickad: ${data.message || ''}`;
+                    statusEl.style.color = '#27ae60';
+                } else {
+                    statusEl.textContent = `Fel: ${data.error || 'Okänt fel'}`;
+                    statusEl.style.color = '#e74c3c';
                 }
-                if (!shown) {
-                    table.innerHTML = '<tr><td>Ingen relevant saldo-info</td></tr>';
-                }
+                
+                setTimeout(() => updateOpenOrders(), 1000);
+            })
+            .catch(error => {
+                console.error('Fel vid orderskickning:', error);
+                const statusEl = document.getElementById('order-status');
+                statusEl.textContent = `Fel: ${error.message}`;
+                statusEl.style.color = '#e74c3c';
             });
-    }
-    function parseOrderLine(line) {
-        // Förväntat format: "YYYY-MM-DD HH:MM:SS: Order-ID: 123, Status: EXECUTED, Info: [...]"
-        const match = line.match(/^([\d\-: .]+): Order-ID: (\d+), Status: ([^,]+), Info: (.+)$/);
-        if (!match) return null;
-        let info = match[4];
-        let symbol = '', type = '', side = '', price = '', amount = '', infoText = '';
-        try {
-            // Rensa Python None till JSON null, och enkla till dubbeLA citat
-            const cleanInfo = info.replace(/None/g, 'null').replace(/'/g, '"');
-            let arr = null;
+        });
+        
+        // Order history filter
+        document.getElementById('history-filter-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const symbol = document.getElementById('history-symbol').value;
+            const date = document.getElementById('history-date').value;
+            
+            let url = `${apiBase}/orderhistory`;
+            const params = [];
+            
+            if (symbol) params.push(`symbol=${encodeURIComponent(symbol)}`);
+            if (date) params.push(`date=${encodeURIComponent(date)}`);
+            
+            if (params.length > 0) {
+                url += `?${params.join('&')}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const ordersTable = document.getElementById('orders-table');
+                    ordersTable.innerHTML = '';
+                    
+                    if (data && data.orders && data.orders.length > 0) {
+                        data.orders.forEach(order => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${order.time || ''}</td>
+                                <td>${order.order_id || ''}</td>
+                                <td>${order.status || ''}</td>
+                                <td>${order.info || ''}</td>
+                            `;
+                            ordersTable.appendChild(row);
+                        });
+                    } else {
+                        const row = document.createElement('tr');
+                        row.innerHTML = '<td colspan="4">Inga ordrar hittades</td>';
+                        ordersTable.appendChild(row);
+                    }
+                })
+                .catch(error => console.error('Fel vid hämtning av orderhistorik:', error));
+        });
+        
+        // Configuration functions
+        function loadConfig() {
+            fetch(`${apiBase}/config`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.config) {
+                        document.getElementById('config-text').value = JSON.stringify(data.config, null, 2);
+                    } else {
+                        document.getElementById('config-text').value = '{}';
+                    }
+                })
+                .catch(error => {
+                    console.error('Fel vid laddning av konfiguration:', error);
+                    document.getElementById('config-status').textContent = `Fel: ${error.message}`;
+                    document.getElementById('config-status').style.color = '#e74c3c';
+                });
+        }
+        
+        document.getElementById('config-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const configText = document.getElementById('config-text').value;
+            let configObj;
+            
             try {
-                arr = JSON.parse(cleanInfo);
-            } catch (e) {
-                arr = null;
+                configObj = JSON.parse(configText);
+            } catch (error) {
+                document.getElementById('config-status').textContent = 'Fel: Ogiltig JSON';
+                document.getElementById('config-status').style.color = '#e74c3c';
+                return;
             }
-            if (Array.isArray(arr)) {
-                // Bitfinex-format: symbol på index 3, typ på 8, side på 6, pris på 16, mängd på 6, status på 13
-                if (arr[3]) {
-                    const m = arr[3].match(/^t?TEST?([A-Z]+):TEST?([A-Z]+)$/i);
-                    symbol = m ? m[1].toUpperCase() + '/' + m[2].toUpperCase() : arr[3];
-                }
-                type = arr[8] || '';
-                side = (parseFloat(arr[6]) > 0 ? 'Köp' : 'Sälj');
-                price = arr[16] || '';
-                amount = arr[6] || '';
-                infoText = '';
-            } else {
-                infoText = info;
-            }
-        } catch (e) {
-            infoText = info;
-        }
-        return {
-            time: match[1],
-            orderId: match[2],
-            status: match[3],
-            symbol,
-            type,
-            side,
-            price,
-            amount,
-            infoText
-        };
-    }
-    function updateOrders() {
-        fetch(apiBase + '/orders')
-            .then(r => r.json())
-            .then(d => {
-                const tbody = document.getElementById('orders-table').querySelector('tbody');
-                tbody.innerHTML = '';
-                let count = 0;
-                (d.orders || []).forEach(line => {
-                    const order = parseOrderLine(line);
-                    if (order) {
-                        let statusClass = 'status-other';
-                        const status = order.status.toUpperCase();
-                        if (status.startsWith('EXECUTED')) statusClass = 'status-executed';
-                        else if (status.startsWith('CANCELED')) statusClass = 'status-canceled';
-                        tbody.innerHTML += `<tr title='${order.infoText ? order.infoText : ''}'>` +
-                            `<td>${order.time}</td><td>${order.orderId}</td><td>${order.symbol}</td><td>${order.type}</td><td>${order.side}</td><td>${order.price}</td><td>${order.amount}</td><td class='${statusClass}'>${order.status}</td></tr>`;
-                        count++;
-                    } else {
-                        tbody.innerHTML += `<tr><td colspan='8'>${line}</td></tr>`;
-                    }
-                });
-                document.getElementById('orders-summary').textContent = `Antal: ${count}`;
-            });
-    }
-    function updateOpenOrders() {
-        fetch(apiBase + '/openorders')
-            .then(r => r.json())
-            .then(d => {
-                const tbody = document.getElementById('openorders-table').querySelector('tbody');
-                tbody.innerHTML = '';
-                if (d.open_orders && d.open_orders.length > 0) {
-                    d.open_orders.forEach(order => {
-                        tbody.innerHTML += `<tr>
-                            <td>${order.id || ''}</td>
-                            <td>${order.symbol || ''}</td>
-                            <td>${order.type || ''}</td>
-                            <td>${order.side || ''}</td>
-                            <td>${order.price || ''}</td>
-                            <td>${order.amount || ''}</td>
-                            <td>${order.status || ''}</td>
-                            <td>${order.datetime || ''}</td>
-                        </tr>`;
-                    });
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="8">Inga aktiva ordrar</td></tr>';
-                }
-            });
-    }
-    function refreshAll() {
-        updateStatus();
-        updateBalance();
-        updateOrders();
-        updateOpenOrders();
-    }
-    setInterval(refreshAll, 5000);
-    refreshAll();
-
-    function sendOrder() {
-        const symbol = document.getElementById('order-symbol').value;
-        const type = document.getElementById('order-type').value;
-        const amount = document.getElementById('order-amount').value;
-        const price = document.getElementById('order-price').value;
-        const payload = { symbol, type, amount };
-        if (price) payload.price = price;
-        fetch(apiBase + '/order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-        .then(r => r.json())
-        .then(d => {
-            document.getElementById('order-result').textContent = d.success ? d.message : (d.error || 'Fel vid order');
-            updateOrders();
-        });
-        return false;
-    }
-
-    function fetchOrderHistory() {
-        const symbol = document.getElementById('history-symbol').value;
-        const date = document.getElementById('history-date').value;
-        let url = apiBase + '/orderhistory';
-        const params = [];
-        if (symbol) params.push('symbol=' + encodeURIComponent(symbol));
-        if (date) params.push('date=' + encodeURIComponent(date));
-        if (params.length) url += '?' + params.join('&');
-        fetch(url)
-            .then(r => r.json())
-            .then(d => {
-                const tbody = document.getElementById('orderhistory-table').querySelector('tbody');
-                tbody.innerHTML = '';
-                let count = 0;
-                (d.orders || []).forEach(line => {
-                    const order = parseOrderLine(line);
-                    if (order) {
-                        let statusClass = 'status-other';
-                        const status = order.status.toUpperCase();
-                        if (status.startsWith('EXECUTED')) statusClass = 'status-executed';
-                        else if (status.startsWith('CANCELED')) statusClass = 'status-canceled';
-                        tbody.innerHTML += `<tr title='${order.infoText ? order.infoText : ''}'>` +
-                            `<td>${order.time}</td><td>${order.orderId}</td><td>${order.symbol}</td><td>${order.type}</td><td>${order.side}</td><td>${order.price}</td><td>${order.amount}</td><td class='${statusClass}'>${order.status}</td></tr>`;
-                        count++;
-                    } else {
-                        tbody.innerHTML += `<tr><td colspan='8'>${line}</td></tr>`;
-                    }
-                });
-                document.getElementById('orderhistory-summary').textContent = `Antal: ${count}`;
-            });
-        return false;
-    }
-    // Lägg till initial laddning av orderhistorik
-    fetchOrderHistory();
-
-    // Ta bort anrop till updatePriceChart i updateRealtimePrice
-
-    function updateRealtimePrice() {
-        fetch(apiBase + '/realtimedata')
-            .then(r => r.json())
-            .then(d => {
-                if (d.price !== undefined && d.price !== null) {
-                    document.getElementById('realtime-price').textContent = d.price + ' (' + d.symbol + ')';
-                } else {
-                    document.getElementById('realtime-price').textContent = 'Ingen data';
-                }
-            });
-    }
-    setInterval(updateRealtimePrice, 5000);
-    updateRealtimePrice();
-
-    function loadConfig() {
-        fetch(apiBase + '/config')
-            .then(r => r.json())
-            .then(d => {
-                document.getElementById('config-json').value = d.config;
+            
+            fetch(`${apiBase}/config`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(configObj)
             })
-            .catch(e => {
-                document.getElementById('config-result').textContent = 'Fel vid laddning av config: ' + e;
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.getElementById('config-status');
+                if (data.success) {
+                    statusEl.textContent = 'Konfiguration sparad';
+                    statusEl.style.color = '#27ae60';
+                } else {
+                    statusEl.textContent = `Fel: ${data.error || 'Okänt fel'}`;
+                    statusEl.style.color = '#e74c3c';
+                }
+            })
+            .catch(error => {
+                console.error('Fel vid sparande av konfiguration:', error);
+                const statusEl = document.getElementById('config-status');
+                statusEl.textContent = `Fel: ${error.message}`;
+                statusEl.style.color = '#e74c3c';
             });
-    }
-    function saveConfig() {
-        let configText = document.getElementById('config-json').value;
-        let configObj;
-        try {
-            configObj = JSON.parse(configText);
-        } catch (e) {
-            document.getElementById('config-result').textContent = 'Fel: Ogiltig JSON!';
-            return false;
-        }
-        fetch(apiBase + '/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(configObj)
-        })
-        .then(r => r.json())
-        .then(d => {
-            document.getElementById('config-result').textContent = d.updated ? 'Sparat!' : (d.error || 'Fel vid sparande.');
-        })
-        .catch(e => {
-            document.getElementById('config-result').textContent = 'Fel vid anrop: ' + e;
         });
-        return false;
-    }
-    // Ladda config när sidan laddas
-    document.addEventListener('DOMContentLoaded', loadConfig);
 
-    // Live price chart - isolerad och säker med symbolväxling
-    (function() {
-        const chartSection = document.getElementById('price-chart-section');
-        const canvas = document.getElementById('priceChart');
-        const symbolSelect = document.getElementById('chart-symbol-select');
-        if (!chartSection || !canvas || !symbolSelect || typeof Chart === 'undefined') return;
-        let priceData = [];
-        let timeLabels = [];
-        const maxPoints = 50;
-        let currentSymbol = symbolSelect.value;
-        const ctx = canvas.getContext('2d');
-        const priceChart = new Chart(ctx, {
+        // Chart initialization for price chart
+        const priceChartCtx = document.getElementById('priceChart').getContext('2d');
+        const priceChart = new Chart(priceChartCtx, {
             type: 'line',
             data: {
-                labels: timeLabels,
+                labels: [],
                 datasets: [{
                     label: 'Pris',
-                    data: priceData,
-                    borderColor: '#2ecc40',
-                    backgroundColor: 'rgba(46,204,64,0.1)',
-                    tension: 0.2,
-                    pointRadius: 0
+                    data: [],
+                    borderColor: '#2980b9',
+                    backgroundColor: 'rgba(41, 128, 185, 0.2)',
+                    tension: 0.4,
+                    fill: true
                 }]
             },
             options: {
                 responsive: true,
-                plugins: { legend: { display: false } },
+                maintainAspectRatio: false,
                 scales: {
-                    x: { display: false },
-                    y: { beginAtZero: false }
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Tid'
+                        }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Pris'
+                        },
+                        beginAtZero: false
+                    }
                 }
             }
         });
-        function updatePriceChart(newPrice) {
-            const now = new Date();
-            const label = now.toLocaleTimeString();
-            priceData.push(newPrice);
-            timeLabels.push(label);
-            if (priceData.length > maxPoints) {
-                priceData.shift();
-                timeLabels.shift();
-            }
-            priceChart.update();
-        }
-        function resetChart() {
-            priceData.length = 0;
-            timeLabels.length = 0;
-            priceChart.update();
-        }
-        // Hämta pris för vald symbol
-        function pollPriceForChart() {
-            fetch(apiBase + '/realtimedata?symbol=' + encodeURIComponent(currentSymbol))
-                .then(r => r.json())
-                .then(d => {
-                    if (d.price !== undefined && d.price !== null) {
-                        updatePriceChart(d.price);
+        
+        function updatePriceChart() {
+            const symbol = document.getElementById('chart-symbol-select').value;
+            
+            fetch(`${apiBase}/pricehistory?symbol=${encodeURIComponent(symbol)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.prices && data.prices.length > 0) {
+                        const labels = data.prices.map(item => new Date(item.timestamp).toLocaleTimeString());
+                        const prices = data.prices.map(item => item.price);
+                        
+                        priceChart.data.labels = labels;
+                        priceChart.data.datasets[0].data = prices;
+                        priceChart.update();
+                        
+                        document.getElementById('live-price').textContent = prices[prices.length - 1];
                     }
                 })
-                .catch(() => {});
+                .catch(error => console.error('Fel vid hämtning av prishistorik:', error));
         }
-        let pollInterval = setInterval(pollPriceForChart, 5000);
-        pollPriceForChart();
-        symbolSelect.addEventListener('change', function() {
-            currentSymbol = symbolSelect.value;
-            resetChart();
-            clearInterval(pollInterval);
-            pollInterval = setInterval(pollPriceForChart, 5000);
-            pollPriceForChart();
-        });
-    })();
-    </script>
+        
+        document.getElementById('chart-symbol-select').addEventListener('change', updatePriceChart);
+
+        // ***** STRATEGI-PRESTANDA SEKTION *****
+        // Variabler för att hålla chart-instanser
+        let performanceOverviewChart = null;
+        let dailyPerformanceChart = null;
+        let hourlyDistributionChart = null;
+        let cumulativePnlChart = null;
+        let tradeSizesChart = null;
+        
+        // Formatering av valuta
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('sv-SE', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2
+            }).format(amount);
+        }
+        
+        // Formatering av procenttal
+        function formatPercent(value) {
+            return new Intl.NumberFormat('sv-SE', {
+                style: 'percent',
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1
+            }).format(value / 100);
+        }
+        
+        // Funktion för att konvertera datumsträngar till lokalt format
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('sv-SE');
+        }
+        
+        // Hitta elementreferenser
+        const performanceFilterForm = document.getElementById('performance-filter-form');
+        const symbolSelect = document.getElementById('performance-symbol');
+        const startDateInput = document.getElementById('performance-start-date');
+        const endDateInput = document.getElementById('performance-end-date');
+        const debugCheckbox = document.getElementById('performance-debug-mode');
+        
+        // Hämta prestanda-data från API
+        function fetchStrategyPerformance() {
+            // Sätt upp query parameters
+            const params = new URLSearchParams();
+            
+            if (symbolSelect && symbolSelect.value) {
+                params.append('symbol', symbolSelect.value);
+            }
+            
+            if (startDateInput && startDateInput.value) {
+                params.append('start_date', startDateInput.value);
+            }
+            
+            if (endDateInput && endDateInput.value) {
+                params.append('end_date', endDateInput.value);
+            }
+            
+            if (debugCheckbox && debugCheckbox.checked) {
+                params.append('debug', 'true');
+            }
+            
+            // Konstruera URL
+            const url = `${apiBase}/strategy_performance?${params.toString()}`;
+            
+            // Visa laddningsindikator
+            document.getElementById('total-trades').textContent = 'Laddar...';
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'ok') {
+                        displayPerformanceData(data.performance, data.trades);
+                        
+                        // Visa debug-info om det är aktiverat och finns
+                        if (debugCheckbox && debugCheckbox.checked && data.debug_info) {
+                            document.getElementById('debug-info-container').style.display = 'block';
+                            document.getElementById('debug-info-content').textContent = 
+                                JSON.stringify(data.debug_info, null, 2);
+                        } else {
+                            document.getElementById('debug-info-container').style.display = 'none';
+                        }
+                    } else {
+                        console.error('Fel i prestandadata:', data.status);
+                        alert(`Ett fel uppstod: ${data.status}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Fel vid hämtning av prestandadata:', error);
+                    alert(`Ett fel uppstod: ${error.message}`);
+                });
+        }
+        
+        // Visa prestanda-data i gränssnittet
+        function displayPerformanceData(performance, trades) {
+            // Uppdatera översiktssiffror
+            document.getElementById('total-trades').textContent = performance.total_trades;
+            document.getElementById('total-buys').textContent = performance.buys;
+            document.getElementById('total-sells').textContent = performance.sells;
+            document.getElementById('total-executed').textContent = performance.executed;
+            document.getElementById('total-cancelled').textContent = performance.cancelled;
+            
+            // Visa P&L och win rate
+            const profitLoss = document.getElementById('profit-loss');
+            profitLoss.textContent = formatCurrency(performance.profit_loss);
+            profitLoss.style.color = performance.profit_loss >= 0 ? 'green' : 'red';
+            
+            const avgProfit = document.getElementById('avg-profit');
+            avgProfit.textContent = formatCurrency(performance.avg_profit_per_trade);
+            avgProfit.style.color = performance.avg_profit_per_trade >= 0 ? 'green' : 'red';
+            
+            document.getElementById('win-rate').textContent = performance.win_rate.toFixed(1) + '%';
+            
+            // Nya metriker
+            document.getElementById('win-loss-ratio').textContent = performance.win_loss_ratio.toFixed(2);
+            document.getElementById('max-drawdown').textContent = formatCurrency(performance.max_drawdown);
+            
+            // Uppdatera symbolprestanda-tabellen
+            updateSymbolTable(performance.symbols);
+            
+            // Uppdatera trades-tabellen
+            updateTradesTable(trades);
+            
+            // Uppdatera diagram
+            updatePerformanceOverviewChart(performance);
+            updateDailyPerformanceChart(performance.daily_performance);
+            updateHourlyDistributionChart(performance.hourly_distribution);
+            updateCumulativePnlChart(performance.cumulative_pnl);
+            updateTradeSizesChart(performance.trade_sizes);
+        }
+        
+        // Uppdatera symboltabellen
+        function updateSymbolTable(symbols) {
+            const table = document.getElementById('symbol-performance-table');
+            table.innerHTML = '';
+            
+            if (!symbols || Object.keys(symbols).length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="7">Ingen data tillgänglig</td>';
+                table.appendChild(row);
+                return;
+            }
+            
+            for (const [symbol, stats] of Object.entries(symbols)) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${symbol}</td>
+                    <td>${stats.trades}</td>
+                    <td>${stats.buys}</td>
+                    <td>${stats.sells}</td>
+                    <td>${formatCurrency(stats.volume)}</td>
+                    <td>${stats.executed}</td>
+                    <td>${formatCurrency(stats.average_price)}</td>
+                `;
+                table.appendChild(row);
+            }
+        }
+        
+        // Uppdatera trades-tabellen
+        function updateTradesTable(trades) {
+            const table = document.getElementById('performance-trades-table');
+            table.innerHTML = '';
+            
+            if (!trades || trades.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="7">Ingen data tillgänglig</td>';
+                table.appendChild(row);
+                return;
+            }
+            
+            trades.forEach(trade => {
+                const row = document.createElement('tr');
+                const statusClass = trade.status.toUpperCase().includes('EXECUTED') ? 'status-executed' : 
+                                    trade.status.toUpperCase().includes('CANCELED') || trade.status.toUpperCase().includes('CANCELLED') ? 
+                                    'status-canceled' : '';
+                
+                row.innerHTML = `
+                    <td>${trade.time}</td>
+                    <td>${trade.symbol}</td>
+                    <td>${trade.side === 'buy' ? 'Köp' : 'Sälj'}</td>
+                    <td>${trade.price.toFixed(2)}</td>
+                    <td>${trade.amount.toFixed(6)}</td>
+                    <td>${formatCurrency(trade.value)}</td>
+                    <td class="${statusClass}">${trade.status}</td>
+                `;
+                table.appendChild(row);
+            });
+        }
+        
+        // Uppdatera översiktsdiagram (köp/sälj-fördelning)
+        function updatePerformanceOverviewChart(performance) {
+            if (performanceOverviewChart) {
+                performanceOverviewChart.destroy();
+            }
+            
+            const ctx = document.getElementById('performance-overview-chart').getContext('2d');
+            performanceOverviewChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Köp', 'Sälj'],
+                    datasets: [{
+                        data: [performance.buys, performance.sells],
+                        backgroundColor: ['#36a2eb', '#ff6384'],
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Fördelning av köp och sälj'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Uppdatera dagligt prestanda-diagram
+        function updateDailyPerformanceChart(dailyData) {
+            if (dailyPerformanceChart) {
+                dailyPerformanceChart.destroy();
+            }
+            
+            if (!dailyData || dailyData.length === 0) {
+                return;
+            }
+            
+            const ctx = document.getElementById('daily-performance-chart').getContext('2d');
+            const labels = dailyData.map(d => formatDate(d.date));
+            const buyData = dailyData.map(d => d.buys);
+            const sellData = dailyData.map(d => d.sells);
+            const volumeData = dailyData.map(d => d.volume);
+            const pnlData = dailyData.map(d => d.profit_loss);
+            
+            dailyPerformanceChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Köp',
+                            data: buyData,
+                            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                            borderColor: 'rgb(54, 162, 235)',
+                            borderWidth: 1,
+                            stack: 'Stack 0'
+                        },
+                        {
+                            label: 'Sälj',
+                            data: sellData,
+                            backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                            borderColor: 'rgb(255, 99, 132)',
+                            borderWidth: 1,
+                            stack: 'Stack 0'
+                        },
+                        {
+                            label: 'Vinst/förlust',
+                            data: pnlData,
+                            type: 'line',
+                            yAxisID: 'y1',
+                            borderColor: 'rgb(75, 192, 192)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Datum'
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            title: {
+                                display: true,
+                                text: 'Antal trades'
+                            }
+                        },
+                        y1: {
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Vinst/förlust ($)'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Daglig handelsprestanda'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.raw;
+                                    return label === 'Vinst/förlust' ? 
+                                        `${label}: ${formatCurrency(value)}` : 
+                                        `${label}: ${value}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Uppdatera timvis distributionsdiagram
+        function updateHourlyDistributionChart(hourlyData) {
+            if (hourlyDistributionChart) {
+                hourlyDistributionChart.destroy();
+            }
+            
+            if (!hourlyData || !Array.isArray(hourlyData) || hourlyData.length === 0) {
+                return;
+            }
+            
+            const ctx = document.getElementById('hourly-activity-chart').getContext('2d');
+            
+            // Sortera data efter timme
+            hourlyData.sort((a, b) => parseInt(a.hour) - parseInt(b.hour));
+            
+            const labels = hourlyData.map(d => `${d.hour}:00`);
+            const tradesData = hourlyData.map(d => d.trades);
+            const buysData = hourlyData.map(d => d.buys);
+            const sellsData = hourlyData.map(d => d.sells);
+            
+            hourlyDistributionChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Köp',
+                            data: buysData,
+                            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                            borderColor: 'rgb(54, 162, 235)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Sälj',
+                            data: sellsData,
+                            backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                            borderColor: 'rgb(255, 99, 132)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Timme på dagen'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Antal trades'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Handelsaktivitet per timme'
+                        },
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Uppdatera kumulativt P&L-diagram
+        function updateCumulativePnlChart(pnlData) {
+            if (cumulativePnlChart) {
+                cumulativePnlChart.destroy();
+            }
+            
+            if (!pnlData || pnlData.length === 0) {
+                return;
+            }
+            
+            const ctx = document.getElementById('cumulative-pnl-chart').getContext('2d');
+            
+            const dates = pnlData.map(d => d.date);
+            const pnlValues = pnlData.map(d => d.pnl);
+            
+            // Skapa gradient för fyllning
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(75, 192, 192, 0.5)');
+            gradient.addColorStop(1, 'rgba(75, 192, 192, 0)');
+            
+            cumulativePnlChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Kumulativ P&L',
+                        data: pnlValues,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Tid'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Vinst/förlust ($)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Kumulativ vinst/förlust över tid'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Vinst/förlust: ${formatCurrency(context.raw)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Uppdatera trade-storlekar-diagram
+        function updateTradeSizesChart(sizeData) {
+            if (tradeSizesChart) {
+                tradeSizesChart.destroy();
+            }
+            
+            if (!sizeData) {
+                return;
+            }
+            
+            const ctx = document.getElementById('trade-sizes-chart').getContext('2d');
+            
+            tradeSizesChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Små (<$100)', 'Medel ($100-$1000)', 'Stora (>$1000)'],
+                    datasets: [{
+                        data: [sizeData.small, sizeData.medium, sizeData.large],
+                        backgroundColor: [
+                            'rgba(75, 192, 192, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 159, 64, 0.7)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Fördelning av trade-storlekar'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Event listeners för strategi-prestanda-formulär
+        if (performanceFilterForm) {
+            performanceFilterForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                fetchStrategyPerformance();
+            });
+        }
+        
+        // Hämta initiala data vid sidladdning
+        function initialize() {
+            // Status och basdata
+            updateBotStatus();
+            updateBalance();
+            updateCurrentPrice();
+            updateOpenOrders();
+            updateLogs();
+            
+            // Ladda config
+            loadConfig();
+            
+            // Ladda prisdiagram
+            updatePriceChart();
+            
+            // Ladda prestandadata
+            if (document.getElementById('performance-filter-form')) {
+                // Sätt dagens datum som slutdatum som standard
+                const today = new Date().toISOString().split('T')[0];
+                if (endDateInput && !endDateInput.value) {
+                    endDateInput.value = today;
+                }
+                
+                // Sätt en månad tillbaka som startdatum som standard
+                const oneMonthAgo = new Date();
+                oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                if (startDateInput && !startDateInput.value) {
+                    startDateInput.value = oneMonthAgo.toISOString().split('T')[0];
+                }
+                
+                // Hämta prestanda
+                fetchStrategyPerformance();
+            }
+        }
+        
+        // Sätt upp periodisk uppdatering
+        setInterval(function() {
+            updateBotStatus();
+            updateBalance();
+            updateCurrentPrice();
+            updateOpenOrders();
+            updateLogs();
+        }, 5000);
+        
+        // Initiera sidan
+        initialize();
+    });
+</script>
 </body>
 </html>

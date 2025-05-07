@@ -13,9 +13,18 @@
 - E-postnotifieringar vid orderhändelser
 - Backtest-funktionalitet
 - Felhantering för ogiltiga symboler och orderproblem
+- Strategi-prestanda-sektion i dashboarden för analys av handelsresultat
 
 ## 🚧 Pågår / Nästa steg
 
+- Förbättrad strategi-prestanda-sektion:
+  - Mer detaljerad statistik och visualiseringar
+  - Förbättrad beräkning av vinst/förlust
+  - Export av statistik till CSV/Excel
+- Förbättrad loggning och debug-funktionalitet:
+  - Detaljerad loggning av handelsbeslut
+  - Visualisering av specifika felkällor
+  - Enkel debug-panel för felsökning
 - Bättre felhantering och loggning i både backend och frontend
 - Visa tydligare felmeddelanden i webbgränssnittet
 - Stöd för fler exchanges (t.ex. Binance, Coinbase)
@@ -24,6 +33,20 @@
 - Automatiska e-postrapporter om tradingresultat
 - Mobilanpassning av dashboarden
 - dockerisering och möjlighet till molndeployment
+
+## 🔮 Framtida planer
+
+- Utveckla en modern frontend med React:
+  - Separera frontend från backend för bättre arkitektur
+  - Förbättrad användarupplevelse med moderna UI-komponenter
+  - Responsiv design för alla enheter
+  - Mer interaktiva grafer och visualiseringar
+  - State management med Redux eller Context API
+  - Realtidsuppdateringar med WebSockets
+  - Möjlighet till teman och anpassning av användargränssnittet
+- Utökad API-dokumentation för enklare integration
+- Potentiell deployment till molntjänster (Azure, AWS, etc.)
+- Dashboard-applikation för mobiltelefoner
 
 ---
 Uppdatera denna fil löpande när nya funktioner implementeras eller påbörjas.

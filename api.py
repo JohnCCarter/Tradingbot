@@ -1,3 +1,5 @@
+import json
+import time
 import ccxt
 from flask import Flask, jsonify, request, send_file, redirect, url_for, Response
 import subprocess
@@ -200,9 +202,15 @@ def create_order():
     price = data.get("price")
     if price is not None:
         price = float(price)
-    from tradingbot import place_order
-
+    
+    # Importera funktionerna för att hantera orders
+    from tradingbot import place_order, ensure_paper_trading_symbol, EXCHANGE_NAME
+    
     try:
+        # Säkerställ rätt symbolformat för Bitfinex paper trading
+        if EXCHANGE_NAME == 'bitfinex':
+            symbol = ensure_paper_trading_symbol(symbol)
+            
         place_order(order_type, symbol, amount, price)
         return jsonify(
             {"success": True, "message": f"{order_type} order sent for {symbol}."}
@@ -214,10 +222,15 @@ def create_order():
 
 @app.route("/realtimedata", methods=["GET"])
 def realtimatedata():
-    from tradingbot import get_current_price, SYMBOL
+    from tradingbot import get_current_price, SYMBOL, ensure_paper_trading_symbol, EXCHANGE_NAME
 
     symbol = request.args.get("symbol") or SYMBOL
+    
     try:
+        # Säkerställ rätt symbolformat för Bitfinex paper trading
+        if EXCHANGE_NAME == 'bitfinex':
+            symbol = ensure_paper_trading_symbol(symbol)
+            
         price = get_current_price(symbol)
         return jsonify({"symbol": symbol, "price": price})
     except Exception as e:
@@ -255,13 +268,15 @@ def serve_dashboard():
 
 @app.route("/openorders", methods=["GET"])
 def get_open_orders():
-    from tradingbot import exchange, SANDBOX
-    # In sandbox/testnet mode, return empty list without real API call
-    if SANDBOX:
-        return jsonify({"open_orders": []})
+    from tradingbot import exchange, ensure_paper_trading_symbol, EXCHANGE_NAME
     try:
+        # Om symbol anges i request, kontrollera och konvertera formatet
+        symbol_param = request.args.get("symbol")
+        if symbol_param and EXCHANGE_NAME == 'bitfinex':
+            symbol_param = ensure_paper_trading_symbol(symbol_param)
+            
         # Use CCXT fetch_open_orders to retrieve active orders
-        open_orders = exchange.fetch_open_orders()
+        open_orders = exchange.fetch_open_orders(symbol_param) if symbol_param else exchange.fetch_open_orders()
         result = []
         for order in open_orders:
             result.append({
@@ -281,6 +296,491 @@ def get_open_orders():
     except Exception:
         logger.exception("Error in /openorders:")
         return jsonify({"error": "Unable to fetch open orders."}), 500
+
+
+@app.route("/strategy_performance", methods=["GET"])
+def strategy_performance():
+    import json
+    log_path = os.path.join(os.path.dirname(__file__), "order_status_log.txt")
+    if not os.path.exists(log_path):
+        return jsonify({"performance": {}, "trades": [], "status": "no_file"})
+    
+    # Hämta parametrar för filtrering
+    symbol = request.args.get("symbol")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    
+    # Ny parameter för att välja detaljnivå
+    detail_level = request.args.get("detail_level", "standard")  # standard, extended, full
+    
+    # Statistikvariabler
+    performance = {
+        "total_trades": 0,
+        "buys": 0,
+        "sells": 0,
+        "executed": 0,
+        "cancelled": 0,
+        "profit_loss": 0.0,
+        "win_rate": 0.0,
+        "avg_profit_per_trade": 0.0,
+        "symbols": {},
+        "daily_performance": {},
+        # Utökade statistikfält
+        "highest_profit_trade": None,
+        "highest_loss_trade": None,
+        "avg_trade_duration": 0,
+        "trade_frequency": 0,  # Trades per day
+        "consecutive_wins": 0,
+        "consecutive_losses": 0,
+        "current_streak": 0,
+        "risk_reward_ratio": 0.0,
+        "trade_success_by_hour": {}  # Success rate by hour of day
+    }
+    
+    trades = []
+    parse_errors = []
+    
+    # För att beräkna handelspar
+    paired_trades = {}  # key: symbol, value: list of buy and sell trades
+    
+    # För att spåra handelsaktivitet per timme
+    hourly_trades = {}
+    
+    with open(log_path, "r") as f:
+        for line in f:
+            # Filtrera för orderhändelser
+            if "EXECUTED" not in line and "CANCELED" not in line and "CANCELLED" not in line:
+                continue
+            
+            # Parsad orderdata
+            try:
+                # Använd samma funktion som i frontend för parsning
+                # Förväntat format: "YYYY-MM-DD HH:MM:SS: Order-ID: 123, Status: EXECUTED, Info: [...]"
+                match = line.split(": Order-ID:")
+                if not match or len(match) < 2:
+                    parse_errors.append({
+                        "line": line,
+                        "error": "Kunde inte dela på 'Order-ID:'"
+                    })
+                    continue
+                
+                date_part = match[0]  # YYYY-MM-DD HH:MM:SS
+                if not date_part or len(date_part) < 10:
+                    parse_errors.append({
+                        "line": line,
+                        "error": "Ogiltigt datumformat"
+                    })
+                    continue
+                
+                date = date_part.split(" ")[0]  # YYYY-MM-DD
+                time_parts = date_part.split(" ")
+                hour = "00"
+                if len(time_parts) > 1 and ":" in time_parts[1]:
+                    hour = time_parts[1].split(":")[0]
+                
+                # Spåra handelsaktivitet per timme
+                if hour not in hourly_trades:
+                    hourly_trades[hour] = {
+                        "total": 0,
+                        "executed": 0,
+                        "cancelled": 0,
+                        "buys": 0,
+                        "sells": 0
+                    }
+                
+                hourly_trades[hour]["total"] += 1
+                
+                # Filtrera på datum om angivet
+                if start_date and date < start_date:
+                    continue
+                if end_date and date > end_date:
+                    continue
+                
+                # Extrahera order-ID och status
+                rest = match[1].split(", Status: ")
+                if len(rest) < 2:
+                    parse_errors.append({
+                        "line": line,
+                        "error": "Kunde inte dela på 'Status:'"
+                    })
+                    continue
+                
+                order_id = rest[0].strip()
+                status_part = rest[1].split(", Info: ")
+                if not status_part:
+                    parse_errors.append({
+                        "line": line,
+                        "error": "Kunde inte dela på 'Info:'"
+                    })
+                    continue
+                
+                status = status_part[0]
+                info = status_part[1] if len(status_part) > 1 else ""
+                
+                # Rensa Python None till JSON null, och enkla till dubbla citat
+                cleaned_info = info.replace("None", "null").replace("'", "\"")
+                
+                # Försök parsa order-info
+                try:
+                    # Bitfinex-format: symbol på index 3, typ på 8, side på 6, pris på 16, mängd på 6
+                    arr = json.loads(cleaned_info)
+                    if not arr or not isinstance(arr, list):
+                        parse_errors.append({
+                            "line": line,
+                            "error": "Kunde inte parsa JSON från info"
+                        })
+                        continue
+                    
+                    order_symbol = "unknown"
+                    if len(arr) > 3 and arr[3]:
+                        symbol_match = arr[3].upper()
+                        order_symbol = symbol_match
+                    
+                    # Filtrera på symbol om angivet
+                    if symbol and symbol.upper() not in order_symbol:
+                        continue
+                    
+                    # Samla trade-data
+                    side = "buy" if len(arr) > 6 and float(arr[6] or 0) > 0 else "sell"
+                    price = float(arr[16]) if len(arr) > 16 and arr[16] else 0.0
+                    amount = abs(float(arr[6])) if len(arr) > 6 and arr[6] else 0.0
+                    order_type = arr[8] if len(arr) > 8 else "unknown"
+                    
+                    # Uppdatera statistik
+                    performance["total_trades"] += 1
+                    
+                    if side == "buy":
+                        performance["buys"] += 1
+                        hourly_trades[hour]["buys"] += 1
+                    else:
+                        performance["sells"] += 1
+                        hourly_trades[hour]["sells"] += 1
+                    
+                    if "EXECUTED" in status.upper():
+                        performance["executed"] += 1
+                        hourly_trades[hour]["executed"] += 1
+                    elif "CANCELED" in status.upper() or "CANCELLED" in status.upper():
+                        performance["cancelled"] += 1
+                        hourly_trades[hour]["cancelled"] += 1
+                    
+                    # Spåra prestanda per symbol
+                    if order_symbol not in performance["symbols"]:
+                        performance["symbols"][order_symbol] = {
+                            "trades": 0,
+                            "buys": 0,
+                            "sells": 0,
+                            "volume": 0.0,
+                            "executed": 0,
+                            "cancelled": 0,
+                            "avg_buy_price": 0.0,
+                            "avg_sell_price": 0.0,
+                            "total_buy_value": 0.0,
+                            "total_sell_value": 0.0,
+                            "profit_loss": 0.0
+                        }
+                    
+                    symbol_stats = performance["symbols"][order_symbol]
+                    symbol_stats["trades"] += 1
+                    symbol_stats["volume"] += amount * price
+                    
+                    if side == "buy":
+                        symbol_stats["buys"] += 1
+                        if "EXECUTED" in status.upper():
+                            symbol_stats["total_buy_value"] += amount * price
+                            if symbol_stats["buys"] > 0:
+                                symbol_stats["avg_buy_price"] = symbol_stats["total_buy_value"] / symbol_stats["buys"]
+                    else:
+                        symbol_stats["sells"] += 1
+                        if "EXECUTED" in status.upper():
+                            symbol_stats["total_sell_value"] += amount * price
+                            if symbol_stats["sells"] > 0:
+                                symbol_stats["avg_sell_price"] = symbol_stats["total_sell_value"] / symbol_stats["sells"]
+                    
+                    if "EXECUTED" in status.upper():
+                        symbol_stats["executed"] += 1
+                    elif "CANCELED" in status.upper() or "CANCELLED" in status.upper():
+                        symbol_stats["cancelled"] += 1
+                    
+                    # Beräkna vinst/förlust per symbol
+                    if symbol_stats["buys"] > 0 and symbol_stats["sells"] > 0:
+                        symbol_stats["profit_loss"] = symbol_stats["total_sell_value"] - symbol_stats["total_buy_value"]
+                    
+                    # Spåra daglig prestanda
+                    if date not in performance["daily_performance"]:
+                        performance["daily_performance"][date] = {
+                            "trades": 0,
+                            "buys": 0,
+                            "sells": 0,
+                            "volume": 0.0,
+                            "executed": 0,
+                            "cancelled": 0
+                        }
+                    
+                    daily_stats = performance["daily_performance"][date]
+                    daily_stats["trades"] += 1
+                    daily_stats["volume"] += amount * price
+                    
+                    if side == "buy":
+                        daily_stats["buys"] += 1
+                    else:
+                        daily_stats["sells"] += 1
+                        
+                    if "EXECUTED" in status.upper():
+                        daily_stats["executed"] += 1
+                    elif "CANCELED" in status.upper() or "CANCELLED" in status.upper():
+                        daily_stats["cancelled"] += 1
+                    
+                    # För att spåra handelspar för mer exakt P&L-analys
+                    if "EXECUTED" in status.upper():
+                        if order_symbol not in paired_trades:
+                            paired_trades[order_symbol] = []
+                        
+                        paired_trades[order_symbol].append({
+                            "time": date_part,
+                            "order_id": order_id,
+                            "side": side,
+                            "price": price,
+                            "amount": amount,
+                            "value": price * amount,
+                            "status": status
+                        })
+                    
+                    # Skapa trade-objekt för frontend
+                    trade = {
+                        "date": date,
+                        "time": date_part,
+                        "order_id": order_id,
+                        "symbol": order_symbol,
+                        "side": side,
+                        "type": order_type,
+                        "price": price,
+                        "amount": amount,
+                        "value": price * amount,
+                        "status": status
+                    }
+                    
+                    # Spåra högsta vinst/förlust per trade
+                    if "EXECUTED" in status.upper():
+                        if side == "sell" and (not performance["highest_profit_trade"] or 
+                                              trade["value"] > performance["highest_profit_trade"]["value"]):
+                            performance["highest_profit_trade"] = trade
+                        
+                        if side == "buy" and (not performance["highest_loss_trade"] or 
+                                             trade["value"] > performance["highest_loss_trade"]["value"]):
+                            performance["highest_loss_trade"] = trade
+                    
+                    # Lägg till trade i listan
+                    trades.append(trade)
+                    
+                except Exception as e:
+                    logger.error(f"Error parsing order info: {e}")
+                    parse_errors.append({
+                        "line": line,
+                        "error": f"Fel vid parsning av orderinfo: {str(e)}"
+                    })
+                    continue
+            
+            except Exception as e:
+                logger.error(f"Error processing order line: {e}")
+                parse_errors.append({
+                    "line": line,
+                    "error": f"Fel vid bearbetning av orderrad: {str(e)}"
+                })
+                continue
+    
+    # Beräkna handelsfrekvens
+    if performance["daily_performance"]:
+        num_days = len(performance["daily_performance"])
+        if num_days > 0:
+            performance["trade_frequency"] = performance["total_trades"] / num_days
+    
+    # Spåra handelsframgång per timme
+    for hour, stats in hourly_trades.items():
+        if stats["total"] > 0:
+            performance["trade_success_by_hour"][hour] = {
+                "total": stats["total"],
+                "executed": stats["executed"],
+                "cancelled": stats["cancelled"],
+                "buys": stats["buys"],
+                "sells": stats["sells"],
+                "success_rate": (stats["executed"] / stats["total"]) if stats["total"] > 0 else 0
+            }
+    
+    # Beräkna vinst/förlust och win rate baserat på köp och sälj
+    if performance["buys"] > 0 and performance["sells"] > 0:
+        # Förbättrad P&L-beräkning baserat på matchade köp/sälj-par
+        total_profit_loss = 0
+        for symbol, symbol_trades in paired_trades.items():
+            buy_trades = [t for t in symbol_trades if t["side"] == "buy"]
+            sell_trades = [t for t in symbol_trades if t["side"] == "sell"]
+            
+            # Enkel FIFO-metod för att matcha köp och sälj
+            remaining_buys = buy_trades.copy()
+            for sell in sell_trades:
+                sell_amount = sell["amount"]
+                sell_value = sell["value"]
+                
+                while sell_amount > 0 and remaining_buys:
+                    buy = remaining_buys[0]
+                    used_amount = min(buy["amount"], sell_amount)
+                    buy_price_per_unit = buy["price"]
+                    sell_price_per_unit = sell["price"]
+                    
+                    # Beräkna P&L för denna del av transaktionen
+                    pl_per_unit = sell_price_per_unit - buy_price_per_unit
+                    pl_for_amount = pl_per_unit * used_amount
+                    total_profit_loss += pl_for_amount
+                    
+                    # Uppdatera återstående mängder
+                    sell_amount -= used_amount
+                    buy["amount"] -= used_amount
+                    
+                    if buy["amount"] <= 0:
+                        remaining_buys.pop(0)
+        
+        performance["profit_loss"] = total_profit_loss
+        performance["win_rate"] = (total_profit_loss > 0) * 100  # Enkel win rate baserad på total P&L
+        
+        if performance["executed"] > 0:
+            performance["avg_profit_per_trade"] = total_profit_loss / performance["executed"]
+    
+    # Sortera trades kronologiskt
+    trades.sort(key=lambda x: x["time"])
+    
+    # Konvertera daily_performance från dict till lista för enklare användning i frontend
+    daily_performance_list = []
+    for date, stats in performance["daily_performance"].items():
+        daily_performance_list.append({
+            "date": date,
+            "trades": stats["trades"],
+            "buys": stats["buys"],
+            "sells": stats["sells"],
+            "volume": stats["volume"],
+            "executed": stats["executed"],
+            "cancelled": stats["cancelled"]
+        })
+    
+    # Sortera daily_performance kronologiskt
+    daily_performance_list.sort(key=lambda x: x["date"])
+    performance["daily_performance"] = daily_performance_list
+    
+    # Förbered respons baserat på önskad detaljnivå
+    response_data = {
+        "performance": performance,
+        "status": "ok"
+    }
+    
+    # Inkludera trades baserat på detaljnivå
+    if detail_level in ["standard", "extended", "full"]:
+        response_data["trades"] = trades[-100:]  # Begränsa till senaste 100 trades för standard
+    
+    # Lägg till debugdata för mer detaljerade nivåer
+    if detail_level in ["extended", "full"]:
+        response_data["hourly_stats"] = performance["trade_success_by_hour"]
+        response_data["paired_trades_summary"] = {
+            symbol: {
+                "buys": len([t for t in trades if t["side"] == "buy"]),
+                "sells": len([t for t in trades if t["side"] == "sell"]),
+            }
+            for symbol, trades in paired_trades.items()
+        }
+    
+    # Lägg till full debugdata
+    if detail_level == "full":
+        response_data["parse_errors"] = parse_errors
+        response_data["all_trades"] = trades  # Alla trades utan begränsning
+    
+    return jsonify(response_data)
+
+
+@app.route("/debug_log", methods=["GET"])
+def debug_log():
+    """Hämtar loggfiler och systemstatus för debug"""
+    
+    # Systemstatistik
+    import psutil
+    system_stats = {
+        "cpu_percent": psutil.cpu_percent(),
+        "memory_percent": psutil.virtual_memory().percent,
+        "disk_percent": psutil.disk_usage('/').percent,
+        "api_uptime_seconds": 0  # Placeholder
+    }
+    
+    # Loggfiler
+    log_files = {}
+    log_path = os.path.join(os.path.dirname(__file__), "order_status_log.txt")
+    
+    if os.path.exists(log_path):
+        with open(log_path, "r") as f:
+            log_content = f.readlines()
+            log_files["order_status_log"] = {
+                "size_bytes": os.path.getsize(log_path),
+                "lines": len(log_content),
+                "last_modified": os.path.getmtime(log_path),
+                "last_lines": log_content[-20:] if len(log_content) > 0 else []
+            }
+    
+    # Bot-status
+    global bot_process
+    bot_status = {
+        "running": bot_process is not None and bot_process.poll() is None,
+        "pid": bot_process.pid if bot_process is not None and bot_process.poll() is None else None,
+        "returncode": bot_process.poll() if bot_process is not None else None
+    }
+    
+    # Konfigurations-information (saniterad)
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    config_info = {}
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                import json
+                config = json.load(f)
+                
+                # Visa endast icke-känsliga delar av konfigurationen
+                safe_keys = ["symbol", "strategy", "time_frame", "log_level", "backtest"]
+                for key in safe_keys:
+                    if key in config:
+                        config_info[key] = config[key]
+                
+                config_info["config_file_size"] = os.path.getsize(config_path)
+                config_info["last_modified"] = os.path.getmtime(config_path)
+        except Exception as e:
+            config_info["error"] = str(e)
+    
+    # Returnera all debug-information
+    return jsonify({
+        "system_stats": system_stats,
+        "log_files": log_files,
+        "bot_status": bot_status,
+        "config_info": config_info,
+        "timestamp": time.time()
+    })
+
+
+@app.route("/historical", methods=["GET"])
+def get_historical_data():
+    from tradingbot import fetch_market_data, EXCHANGE, ensure_paper_trading_symbol
+    
+    symbol = request.args.get("symbol", "BTC/USD")
+    timeframe = request.args.get("timeframe", "1h")
+    limit = int(request.args.get("limit", "100"))
+    
+    # Konvertera symbol till rätt format för Bitfinex paper trading
+    if EXCHANGE.id == 'bitfinex' and EXCHANGE.options.get('paper', False):
+        symbol = ensure_paper_trading_symbol(symbol)
+        logger.info(f"Historical data using paper trading symbol: {symbol}")
+    
+    try:
+        df = fetch_market_data(EXCHANGE, symbol, timeframe, limit)
+        return jsonify({
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "data": df.reset_index().to_dict(orient="records")
+        })
+    except Exception as e:
+        logger.exception(f"Error fetching historical data: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

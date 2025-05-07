@@ -1,7 +1,7 @@
 {
   "EXCHANGE": "bitfinex",
   "SYMBOL": "tTESTBTC:TESTUSD",
-  "TIMEFRAME": "15m",
+  "TIMEFRAME": "30m",
   "LIMIT": 100,
   "EMA_LENGTH": 20,
   "ATR_MULTIPLIER": 2,
@@ -22,6 +22,5 @@
   "EMAIL_SENDER": "adelfoi491@gmail.com",
   "EMAIL_RECEIVER": "adelfoi491@gmail.com",
   "METRICS_PORT": 8001,
-  "SANDBOX": false,
   "HEALTH_PORT": 5001
 }
