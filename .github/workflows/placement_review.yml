@@ -1,0 +1,14 @@
+name: Placement Review
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  placement-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Kontrollera __init__.py och importvägar
+        run: |
+          python Tradingbot/placement_verify.py

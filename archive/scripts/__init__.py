@@ -1,0 +1,1 @@
+# Paketinitialisering för scripts
