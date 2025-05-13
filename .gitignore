@@ -1,6 +1,6 @@
 # Byte-compiled / optimized / DLL files
-__pycache__/
 *.py[cod]
+**/__pycache__/
 *$py.class
 
 # C extensions
@@ -180,7 +180,9 @@ cython_debug/
 # macOS FS artifacts
 .DS_Store
 
-Miniconda3-latest-Linux-x86_64.sh
+# Log files
+tradingbot.log
 order_status_log.txt
+
+Miniconda3-latest-Linux-x86_64.sh
 backtest_result.json
-__pycache__/

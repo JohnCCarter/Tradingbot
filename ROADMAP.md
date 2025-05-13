@@ -27,7 +27,7 @@
   - Enkel debug-panel för felsökning
 - Bättre felhantering och loggning i både backend och frontend
 - Visa tydligare felmeddelanden i webbgränssnittet
-- Stöd för fler exchanges (t.ex. Binance, Coinbase)
+- Stöd för fler exchanges (t.ex. Bitfinex ,Binance, Coinbase)
 - Fler indikatorer och strategier (t.ex. MACD, Bollinger Bands)
 - Lösenordsskydd/adgang till dashboarden
 - Automatiska e-postrapporter om tradingresultat

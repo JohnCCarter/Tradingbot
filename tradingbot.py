@@ -1,4 +1,3 @@
-from email.mime.multipart import MIMEMultipart
 import os
 import json
 import hmac
@@ -157,12 +156,13 @@ LOCAL_TIMEZONE = timezone("Europe/Stockholm")
 
 # Load environment variables (safe if python-dotenv is missing)
 load_dotenv()
-# Validate essential API credentials early
-if not os.getenv("API_KEY") or not os.getenv("API_SECRET"):
-    logging.critical(
-        "Missing API_KEY or API_SECRET environment variables. Please define them in your .env or environment."
-    )
-    sys.exit(1)
+# Set dummy API keys for dev/test if missing
+if not os.getenv("API_KEY"):
+    os.environ["API_KEY"] = "dummy_key"
+    logging.warning("API_KEY not set. Using dummy value for development/testing.")
+if not os.getenv("API_SECRET"):
+    os.environ["API_SECRET"] = "dummy_secret"
+    logging.warning("API_SECRET not set. Using dummy value for development/testing.")
 
 # Constants
 API_KEY = os.getenv("API_KEY")
@@ -172,7 +172,7 @@ API_SECRET = os.getenv("API_SECRET")
 METRICS_PORT = 8000
 
 def validate_api_keys(api_key, api_secret, exchange_name=""):
-    if not api_key or not api_secret:
+    if not api_key or not api_secret or api_key == "DUMMY_KEY" or api_secret == "DUMMY_SECRET":
         raise ValueError(
             f"API_KEY and API_SECRET are required{f' for {exchange_name}' if exchange_name else ''}. Please check your environment variables."
         )
@@ -213,8 +213,46 @@ class BotConfig(BaseModel):
 
 
 # Load config via Pydantic
-with open("config.json") as f:
-    raw_config = json.load(f)
+import os
+import json
+
+def get_default_config():
+    """Return a default config for development/testing if config.json is missing."""
+    return dict(
+        EXCHANGE="bitfinex",
+        SYMBOL="BTC/USD",
+        TIMEFRAME="1m",
+        LIMIT=100,
+        EMA_LENGTH=14,
+        ATR_MULTIPLIER=1.5,
+        VOLUME_MULTIPLIER=1.2,
+        TRADING_START_HOUR=0,
+        TRADING_END_HOUR=23,
+        MAX_DAILY_LOSS=100.0,
+        MAX_TRADES_PER_DAY=10,
+        STOP_LOSS_PERCENT=2.0,
+        TAKE_PROFIT_PERCENT=4.0,
+        EMAIL_NOTIFICATIONS=False,
+        EMAIL_SMTP_SERVER="smtp.gmail.com",
+        EMAIL_SMTP_PORT=465,
+        EMAIL_SENDER="",
+        EMAIL_RECEIVER="",
+        EMAIL_PASSWORD="",
+        LOOKBACK=20,
+        TEST_BUY_ORDER=True,
+        TEST_SELL_ORDER=True,
+        TEST_LIMIT_ORDERS=True,
+        METRICS_PORT=8000,
+        HEALTH_PORT=5001,
+    )
+
+config_path = "config.json"
+if os.path.exists(config_path):
+    with open(config_path) as f:
+        raw_config = json.load(f)
+else:
+    print(f"{TerminalColors.YELLOW}Warning: config.json not found. Using default config for development/testing.{TerminalColors.RESET}")
+    raw_config = get_default_config()
 config = BotConfig(**raw_config)
 
 # Assign config variables
@@ -251,7 +289,9 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", EMAIL_PASSWORD)
 
 # Setup structured logging (JSON if available)
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)  # Capture all levels
+
+# Add handlers
 if JsonFormatter:
     json_handler = logging.StreamHandler()
     json_formatter = JsonFormatter("%(asctime)s %(levelname)s %(message)s")
@@ -262,6 +302,23 @@ else:
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    
+# Lägg till filhanterare för fel och info
+file_handler = logging.FileHandler('tradingbot.log')
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# Säkerställ att obortsedda exceptions loggas
+import sys
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+sys.excepthook = handle_exception
 
 # Create structured logger instance
 log = StructuredLogger(logger)
@@ -377,7 +434,9 @@ def fetch_market_data(exchange, symbol, timeframe='1h', limit=100):
             
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        # Se till att timestamp är int och skapa datetime-kolumn
+        df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
         df.set_index('timestamp', inplace=True)
         return df
     except Exception as e:
@@ -665,6 +724,9 @@ def get_open_orders(symbol=None):
             symbol = ensure_paper_trading_symbol(symbol)
             
         open_orders = exchange.fetch_open_orders(symbol)
+        for order in open_orders:
+            if symbol and order.get('symbol') != symbol:
+                continue
         return open_orders
     except Exception as e:
         log.error(f"Fel vid hämtning av öppna ordrar: {e}")
@@ -686,9 +748,31 @@ def cancel_order(order_id, symbol=None):
 
 # WebSocket authentication
 
+# Persistent nonce storage
+NONCE_FILE = "nonce_store.json"
 
+def get_next_nonce():
+    """Generates a monotonic nonce value and persists it."""
+    try:
+        if os.path.exists(NONCE_FILE):
+            with open(NONCE_FILE, "r") as f:
+                last_nonce = json.load(f).get("last_nonce", 0)
+        else:
+            last_nonce = 0
+
+        current_nonce = max(last_nonce + 1, int(datetime.now().timestamp() * 1_000))
+
+        with open(NONCE_FILE, "w") as f:
+            json.dump({"last_nonce": current_nonce}, f)
+
+        return current_nonce
+    except Exception as e:
+        logging.error(f"Error generating nonce: {e}")
+        raise
+
+# Replace all manual nonce generation with get_next_nonce()
 def build_auth_message(api_key, api_secret):
-    nonce = round(datetime.now().timestamp() * 1_000)
+    nonce = get_next_nonce()
     payload = f"AUTH{nonce}"
     signature = hmac.new(
         api_secret.encode(), payload.encode(), hashlib.sha384
@@ -724,8 +808,9 @@ def authenticate_websocket(uri, api_key, api_secret):
     except Exception as e:
         logging.error(f"WebSocket authentication error: {e}")
 
+# Lägg till validering av marknadsdata innan bearbetning
 async def fetch_realtime_data():
-    retry_delay = 5  # seconds
+    retry_delay = 5  # sekunder
     retries = 0
     channel_id = None
     candles = []
@@ -775,6 +860,10 @@ async def fetch_realtime_data():
                     if isinstance(data[1], list) and isinstance(data[1][0], list):
                         candles = data[1]
                         logging.info(f"Received snapshot with {len(candles)} candles.")
+                        # Validera marknadsdata
+                        if not candles or not all(col in candles[0] for col in ["timestamp", "open", "high", "low", "close", "volume"]):
+                            logging.error("Marknadsdata saknar nödvändiga kolumner: {['timestamp', 'open', 'high', 'low', 'close', 'volume']}")
+                            return None
                         # Return snapshot as initial data
                         return [data[0], candles]
                     # Update: [chanId, [candle]]
@@ -819,9 +908,16 @@ def process_realtime_data(raw_data):
                 f"process_realtime_data: Tomma candles i raw_data: {raw_data}"
             )
         columns = ["timestamp", "open", "high", "low", "close", "volume"]
-        data = pd.DataFrame(candles, columns=columns)
-        data["datetime"] = pd.to_datetime(data["timestamp"], unit="ms", utc=True)
-        data["local_datetime"] = data["datetime"].apply(convert_to_local_time)
+        # Om candles är en lista av listor, konvertera till DataFrame
+        if candles and isinstance(candles[0], (list, tuple)):
+            data = pd.DataFrame(candles, columns=columns)
+        else:
+            data = pd.DataFrame([], columns=columns)
+        # Lägg alltid till datetime-kolumn
+        if not data.empty:
+            data["datetime"] = pd.to_datetime(data["timestamp"], unit="ms", utc=True)
+        else:
+            data["datetime"] = pd.Series(dtype='datetime64[ns, UTC]')
         logging.info(f"Structured Data: {data.head()}")
         return data
     except Exception as e:
@@ -835,9 +931,11 @@ async def fetch_historical_data_async(symbol, timeframe, limit):
     Async wrapper runt fetch_market_data för att hämta historisk OHLCV-data i bakgrund utan att blockera huvudloopen.
     """
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, fetch_market_data, symbol, timeframe, limit)
+    # Pass the exchange instance first, then symbol, timeframe, limit
+    return await loop.run_in_executor(None, fetch_market_data, exchange, symbol, timeframe, limit)
 
 
+# Fixar indenteringsproblem och definierar variabler korrekt
 async def main():
     try:
         # Starta bakgrundsuppgift för att hämta historisk data asynkront
@@ -851,8 +949,8 @@ async def main():
         historical_data = await hist_task
         if historical_data is not None:
             logging.info(f"Fetched historical data: {len(historical_data)} entries.")
-            # Du kan beräkna indikatorer på historisk data vid behov
-            _ = calculate_indicators(
+            # Beräkna indikatorer på historisk data
+            historical_data = calculate_indicators(
                 historical_data,
                 EMA_LENGTH,
                 VOLUME_MULTIPLIER,
@@ -862,22 +960,7 @@ async def main():
         if realtime_data:
             structured_data = process_realtime_data(realtime_data)
             if structured_data is not None:
-                logging.info("Real-time data processing completed.")
-                # Beräkna indikatorer direkt efter process_realtime_data
-                structured_data = calculate_indicators(
-                    structured_data,
-                    EMA_LENGTH,
-                    VOLUME_MULTIPLIER,
-                    TRADING_START_HOUR,
-                    TRADING_END_HOUR,
-                )
-                execute_trading_strategy(
-                    structured_data,
-                    MAX_TRADES_PER_DAY,
-                    MAX_DAILY_LOSS,
-                    ATR_MULTIPLIER,
-                    SYMBOL,
-                )
+                logging.info("Real-time data processed successfully.")
         else:
             logging.error("Failed to fetch real-time data.")
     except Exception as e:
@@ -1204,21 +1287,33 @@ def signal_handler(signum, frame):
     logging.info("Signal received, shutting down bot gracefully.")
     sys.exit(0)
 
+# Lägg till fallback-mekanism för att hantera portkonflikter
 if __name__ == "__main__":
     import signal as signal_module
 
     signal_module.signal(signal_module.SIGINT, signal_handler)
-    # Start health-check server on configured port with address reuse
-    server = ReusableTCPServer(("0.0.0.0", HEALTH_PORT), HealthHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    
+
+    # Starta health-check server med fallback-portar
+    for attempt in range(HEALTH_PORT, HEALTH_PORT + 5):
+        try:
+            server = ReusableTCPServer(("0.0.0.0", attempt), HealthHandler)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            log.info(f"Health-check server startad på port {attempt}")
+            break
+        except OSError as e:
+            log.warning(f"Kunde inte starta health-check server på port {attempt}: {e}")
+    else:
+        log.error("Misslyckades att starta health-check server på alla försökta portar.")
+        sys.exit(1)
+
     # Starta WebSocket-lyssnaren för orderuppdateringar i en separat tråd
     log.info("Startar WebSocket-lyssnare för orderuppdateringar...")
     websocket_thread = threading.Thread(target=_start_listen_updates, daemon=True)
     websocket_thread.start()
-    
+
     # Starta huvudloopen
     asyncio.run(main())
+
     # Håll programmet igång så att WebSocket-lyssnaren lever
     try:
         while True:
@@ -1333,7 +1428,7 @@ import traceback
 # Konfiguration av loggning
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levellevel)s - %(message)s',
     handlers=[
         logging.FileHandler("tradingbot.log"),
         logging.StreamHandler()

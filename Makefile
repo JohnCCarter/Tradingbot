@@ -26,3 +26,5 @@ run:
 # Launch an interactive shell
 shell:
 	conda activate tradingbot_env && ipython
+
+# (setup deprecated; use update-env and other targets)

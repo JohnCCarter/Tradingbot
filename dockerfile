@@ -1,4 +1,4 @@
-FROM python:3.9-slim-bookworm
+FROM python:alpine
 
 # 1) Uppgradera pip & installera grundläggande byggverktyg
 RUN apt-get update \

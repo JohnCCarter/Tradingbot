@@ -1,4 +1,5 @@
 import pytest
+import talib
 import pandas as pd
 from tradingbot import (
     place_order,
@@ -63,7 +64,8 @@ def test_execute_trading_strategy_with_live_data():
     logging.info(
         "[TEST] Hämtar marknadsdata och kör strategi på riktigt (paper account)..."
     )
-    data = fetch_market_data(SYMBOL, TIMEFRAME, LIMIT)
+    from tradingbot import exchange  # Ensure exchange is imported
+    data = fetch_market_data(exchange, SYMBOL, TIMEFRAME, LIMIT)
     assert data is not None and not data.empty, "Kunde inte hämta marknadsdata."
     data = calculate_indicators(
         data, EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR
@@ -337,6 +339,7 @@ if __name__ == "__main__":
 
 
 class DummyExchange:
+    id = "dummy"
     def fetch_ohlcv(self, symbol, timeframe, limit):
         return [[1, 10, 15, 5, 12, 100], [2, 11, 16, 6, 13, 200]]
 

@@ -11,6 +11,7 @@ dependencies:
   - flake8==7.2.0
   - black==25.1.0
   - pip:
+      - ccxt
       - absl-py==2.2.2
       - aiodns==3.2.0
       - aiohappyeyeballs==2.6.1
@@ -21,7 +22,6 @@ dependencies:
       - attrs==25.3.0
       - backtrader==1.9.78.123
       - beautifulsoup4==4.13.4
-      - ccxt==4.4.75
       - certifi==2025.1.31
       - cffi==1.17.1
       - charset-normalizer==3.4.1
@@ -39,6 +39,7 @@ dependencies:
       - idna==3.10
       - importlib-metadata==8.6.1
       - importlib-resources==6.5.2
+      - jinja2==3.1.2
       - keras==3.9.2
       - kiwisolver==1.4.7
       - libclang==18.1.1

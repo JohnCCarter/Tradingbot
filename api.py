@@ -277,6 +277,15 @@ def get_open_orders():
             
         # Use CCXT fetch_open_orders to retrieve active orders
         open_orders = exchange.fetch_open_orders(symbol_param) if symbol_param else exchange.fetch_open_orders()
+        
+        # Log the response from fetch_open_orders for debugging
+        logger.info(f"Fetched open orders: {open_orders}")
+
+        # Validate the response structure
+        if not isinstance(open_orders, list):
+            logger.error("Invalid response format from fetch_open_orders")
+            return jsonify({"error": "InvalidResponse", "message": "Expected a list of orders."}), 500
+
         result = []
         for order in open_orders:
             result.append({
@@ -293,6 +302,36 @@ def get_open_orders():
     except ccxt.AuthenticationError as e:
         logger.error(f"Authentication error fetching open orders: {e}")
         return jsonify({"error": "AuthenticationError", "message": str(e)}), 401
+    except ccxt.base.errors.InvalidNonce as e:
+        logger.error(f"Invalid nonce error: {e}. Retrying with updated nonce.")
+        exchange.nonce += 1  # Increment nonce to resolve the issue
+        try:
+            open_orders = exchange.fetch_open_orders(symbol_param) if symbol_param else exchange.fetch_open_orders()
+            
+            # Log the response from fetch_open_orders for debugging
+            logger.info(f"Fetched open orders: {open_orders}")
+
+            # Validate the response structure
+            if not isinstance(open_orders, list):
+                logger.error("Invalid response format from fetch_open_orders")
+                return jsonify({"error": "InvalidResponse", "message": "Expected a list of orders."}), 500
+
+            result = []
+            for order in open_orders:
+                result.append({
+                    "id": order.get("id"),
+                    "symbol": order.get("symbol"),
+                    "type": order.get("type"),
+                    "side": order.get("side"),
+                    "price": order.get("price"),
+                    "amount": order.get("amount"),
+                    "status": order.get("status"),
+                    "datetime": order.get("datetime"),
+                })
+            return jsonify({"open_orders": result})
+        except Exception as retry_error:
+            logger.exception("Retry failed for /openorders:")
+            return jsonify({"error": "Unable to fetch open orders after retry."}), 500
     except Exception:
         logger.exception("Error in /openorders:")
         return jsonify({"error": "Unable to fetch open orders."}), 500
@@ -444,7 +483,24 @@ def strategy_performance():
                     side = "buy" if len(arr) > 6 and float(arr[6] or 0) > 0 else "sell"
                     price = float(arr[16]) if len(arr) > 16 and arr[16] else 0.0
                     amount = abs(float(arr[6])) if len(arr) > 6 and arr[6] else 0.0
-                    order_type = arr[8] if len(arr) > 8 else "unknown"
+
+                    # Ensure 'type' key exists before accessing
+                    if 'type' not in arr:
+                        parse_errors.append({
+                            "line": line,
+                            "error": "Missing 'type' key in trade data"
+                        })
+                        continue
+
+                    # Validate and extract order type
+                    order_type = arr[8] if len(arr) > 8 and arr[8] else "unknown"
+
+                    # Log missing 'type' field for debugging
+                    if order_type == "unknown":
+                        parse_errors.append({
+                            "line": line,
+                            "error": "Missing or invalid 'type' field in trade data"
+                        })
                     
                     # Uppdatera statistik
                     performance["total_trades"] += 1
@@ -569,8 +625,22 @@ def strategy_performance():
                                              trade["value"] > performance["highest_loss_trade"]["value"]):
                             performance["highest_loss_trade"] = trade
                     
-                    # Lägg till trade i listan
+                    # Add debug logs to trace trade extraction and ensure proper parsing
+                    logger.debug(f"Processing line: {line.strip()}")
+                    logger.debug(f"Parsed order details: symbol={order_symbol}, side={side}, price={price}, amount={amount}")
+
+                    # Validate parsed trade data
+                    if not order_symbol or price <= 0 or amount <= 0:
+                        logger.warning(f"Invalid trade data: symbol={order_symbol}, price={price}, amount={amount}")
+                        parse_errors.append({
+                            "line": line,
+                            "error": "Invalid trade data"
+                        })
+                        continue
+
+                    # Ensure trade is appended only if valid
                     trades.append(trade)
+                    logger.debug(f"Trade added: {trade}")
                     
                 except Exception as e:
                     logger.error(f"Error parsing order info: {e}")
@@ -587,7 +657,70 @@ def strategy_performance():
                     "error": f"Fel vid bearbetning av orderrad: {str(e)}"
                 })
                 continue
-    
+
+            # Complete the parsing logic
+            try:
+                # Adjust filtering logic to match log file format
+                if "EXECUTED" not in line and "CANCELED" not in line and "CANCELLED" not in line:
+                    continue
+
+                # Ensure proper parsing of log lines
+                match = line.split(": Order-ID:")
+                if not match or len(match) < 2:
+                    parse_errors.append({
+                        "line": line,
+                        "error": "Could not split on 'Order-ID:'"
+                    })
+                    continue
+
+                date_part = match[0].strip()  # Extract date and time
+                if not date_part or len(date_part) < 10:
+                    parse_errors.append({
+                        "line": line,
+                        "error": "Invalid date format"
+                    })
+                    continue
+
+                # Extract order details
+                rest = match[1].split(", Status: ")
+                if len(rest) < 2:
+                    parse_errors.append({
+                        "line": line,
+                        "error": "Could not split on 'Status:'"
+                    })
+                    continue
+
+                order_id = rest[0].strip()
+                status_info = rest[1].split(", Info: ")
+                status = status_info[0].strip()
+                info = status_info[1].strip() if len(status_info) > 1 else ""
+
+                # Update performance metrics
+                performance["total_trades"] += 1
+                if status == "EXECUTED":
+                    performance["executed"] += 1
+                elif status in ["CANCELLED", "CANCELED"]:
+                    performance["cancelled"] += 1
+
+                # Track hourly trades
+                hour = date_part.split(" ")[1].split(":")[0] if " " in date_part else "00"
+                if hour not in hourly_trades:
+                    hourly_trades[hour] = {
+                        "total": 0,
+                        "executed": 0,
+                        "cancelled": 0,
+                        "buys": 0,
+                        "sells": 0
+                    }
+                hourly_trades[hour]["total"] += 1
+                hourly_trades[hour]["executed" if status == "EXECUTED" else "cancelled"] += 1
+
+            except Exception as e:
+                parse_errors.append({"line": line, "error": str(e)})
+            finally:
+                # Ensure any necessary cleanup or logging
+                pass
+
     # Beräkna handelsfrekvens
     if performance["daily_performance"]:
         num_days = len(performance["daily_performance"])
@@ -690,7 +823,33 @@ def strategy_performance():
         response_data["parse_errors"] = parse_errors
         response_data["all_trades"] = trades  # Alla trades utan begränsning
     
-    return jsonify(response_data)
+    # Initialize variables for pairing trades
+    remaining_buys = []
+    num_days = len(performance["daily_performance"])
+
+    if num_days > 0:
+        performance["trade_frequency"] = performance["total_trades"] / num_days
+
+    # Logic for pairing buy and sell trades
+    for symbol, symbol_trades in paired_trades.items():
+        buy_trades = [trade for trade in symbol_trades if trade["type"] == "buy"]
+        sell_trades = [trade for trade in symbol_trades if trade["type"] == "sell"]
+        remaining_buys = buy_trades.copy()
+
+        for sell in sell_trades:
+            sell_amount = sell["amount"]
+            while sell_amount > 0 and remaining_buys:
+                buy = remaining_buys[0]
+                # Pairing logic here
+                remaining_buys.pop(0)
+
+    # Return the performance data
+    return jsonify({
+        "performance": performance,
+        "trades": trades,
+        "status": "success" if not parse_errors else "partial_success",
+        "errors": parse_errors
+    })
 
 
 @app.route("/debug_log", methods=["GET"])
@@ -781,6 +940,65 @@ def get_historical_data():
     except Exception as e:
         logger.exception(f"Error fetching historical data: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/ticker", methods=["GET"])
+def ticker_endpoint():
+    try:
+        from tradingbot import get_current_price, SYMBOL
+
+        # Fetch the current price for the default symbol
+        price = get_current_price(SYMBOL)
+        return jsonify({"symbol": SYMBOL, "price": price})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/pricehistory", methods=["GET"])
+def pricehistory():
+    """Fetch historical price data for a given symbol."""
+    import ccxt
+    from flask import jsonify, request
+
+    # Initialize exchange (example: Bitfinex)
+    exchange = ccxt.bitfinex()
+
+    # Ensure nonce is initialized
+    if not hasattr(exchange, 'nonce'):
+        exchange.nonce = int(time.time() * 1000)
+
+    # Get query parameters
+    symbol = request.args.get("symbol")
+    timeframe = request.args.get("timeframe", "1d")  # Default to daily candles
+    limit = int(request.args.get("limit", 100))  # Default to 100 candles
+
+    if not symbol:
+        return jsonify({"error": "Missing 'symbol' parameter"}), 400
+
+    try:
+        # Fetch historical OHLCV data
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+    except ccxt.BaseError as e:
+        logger.error(f"CCXT error fetching OHLCV data: {e}")
+        return jsonify({"error": "CCXTError", "message": str(e)}), 500
+    except Exception as e:
+        logger.exception("Unexpected error in /pricehistory:")
+        return jsonify({"error": "UnexpectedError", "message": str(e)}), 500
+
+    # Format the response
+    data = [
+        {
+            "timestamp": candle[0],
+            "open": candle[1],
+            "high": candle[2],
+            "low": candle[3],
+            "close": candle[4],
+            "volume": candle[5]
+        }
+        for candle in ohlcv
+    ]
+
+    return jsonify({"symbol": symbol, "timeframe": timeframe, "data": data})
 
 
 if __name__ == "__main__":

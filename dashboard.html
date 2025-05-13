@@ -846,18 +846,23 @@
         
         // Update current price function
         function updateCurrentPrice() {
-            fetch(`${apiBase}/ticker`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data && data.price) {
-                        document.getElementById('current-price-value').textContent = `${data.price} (${data.symbol || ''})`;
-                    } else {
-                        document.getElementById('current-price-value').textContent = 'Ingen data';
-                    }
-                })
-                .catch(error => console.error('Fel vid hämtning av aktuellt pris:', error));
+    fetch(`${apiBase}/ticker`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP-fel! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.price) {
+                document.getElementById('current-price-value').textContent = data.price;
+            } else {
+                console.error('Fel: API returnerade ingen prisdata.');
+            }
+        })
+        .catch(error => console.error('Fel vid hämtning av pris:', error));
         }
-        
+
         // Update open orders function
         function updateOpenOrders() {
             fetch(`${apiBase}/openorders`)
