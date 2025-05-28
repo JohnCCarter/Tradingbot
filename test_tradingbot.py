@@ -1,15 +1,17 @@
 import sys
 import os
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 import threading
 import numpy as np
 import pytest
 import talib
 import pandas as pd
-from Tradingbot import tradingbot
-from Tradingbot.tradingbot import (
+import logging
+import json
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from Tradingbot import tradingbot  # noqa: E402
+from Tradingbot.tradingbot import (  # noqa: E402
     place_order,
     get_current_price,
     calculate_indicators,
@@ -28,9 +30,6 @@ from Tradingbot.tradingbot import (
     run_backtest,
     detect_fvg,
 )
-import logging
-import os
-import json
 
 try:
     import ccxt

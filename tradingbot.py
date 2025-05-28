@@ -4,7 +4,14 @@ import hmac
 import hashlib
 import asyncio
 import signal
-from datetime import datetime
+import sys
+import time
+import functools
+import traceback
+import requests
+from datetime import datetime, timedelta
+from functools import lru_cache
+from typing import Dict, List, Tuple, Optional, Any, Union
 
 try:
     from dotenv import load_dotenv
@@ -27,9 +34,6 @@ import threading
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import time
-import functools
-from functools import lru_cache
 
 # Lägg till enkel retry-decorator
 import time as _time
@@ -233,8 +237,6 @@ class BotConfig(BaseModel):
 
 
 # Load config via Pydantic
-import os
-import json
 
 
 def get_default_config():
@@ -335,7 +337,6 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 # Säkerställ att obortsedda exceptions loggas
-import sys
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -434,9 +435,6 @@ def retry(max_attempts=3, initial_delay=1):
         return wrapper
 
     return decorator
-
-
-import ccxt
 
 
 def fetch_balance():
@@ -1462,17 +1460,6 @@ def run_backtest(
             logging.warning("[BACKTEST] Okänt filformat. Ange .json eller .csv.")
     return trades
 
-
-import json
-import time
-import os
-import logging
-from datetime import datetime, timedelta
-import pandas as pd
-import numpy as np
-import requests
-from typing import Dict, List, Tuple, Optional, Any, Union
-import traceback
 
 # Konfiguration av loggning
 logging.basicConfig(

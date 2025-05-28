@@ -157,7 +157,7 @@ def order_history():
                 line_date = line.split(" ")[0]
                 if debug:
                     unique_dates.add(line_date)
-            except:
+            except (IndexError, ValueError):
                 pass
 
             # Filtrera för orderhändelser
