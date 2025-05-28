@@ -345,7 +345,63 @@ def get_open_orders():
 @app.route("/strategy_performance", methods=["GET"])
 def strategy_performance():
     import json
-
+    import traceback
+    from datetime import datetime
+    import glob
+    
+    # Try to use enhanced Performance Analyzer
+    try:
+        from performance_analyzer import PerformanceAnalyzer
+        
+        # Get parameters
+        symbol = request.args.get("symbol")
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        output_format = request.args.get("format", "json")
+        
+        log_path = os.path.join(os.path.dirname(__file__), "order_status_log.txt")
+        if not os.path.exists(log_path):
+            return jsonify({"performance": {}, "trades": [], "status": "no_file"})
+        
+        # Initialize and run analyzer
+        analyzer = PerformanceAnalyzer(log_path)
+        result = analyzer.analyze(symbol, start_date, end_date)
+        
+        # Handle different output formats
+        if output_format.lower() == 'csv':
+            # Generate a timestamped filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            export_path = f"/tmp/performance_export_{timestamp}"
+            
+            # Export and send the files
+            analyzer.export_to_csv(result, export_path)
+            
+            # Create a zip file with all CSVs
+            zip_path = f"/tmp/performance_export_{timestamp}.zip"
+            import zipfile
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                for file in glob.glob(f"{export_path}_*.csv"):
+                    zipf.write(file, os.path.basename(file))
+            
+            # Return the zip file
+            return send_file(
+                zip_path,
+                as_attachment=True,
+                download_name=f"performance_data_{timestamp}.zip",
+                mimetype='application/zip'
+            )
+        
+        # Return JSON by default
+        return jsonify(result)
+            
+    except ImportError:
+        # Fall back to legacy implementation
+        app.logger.warning("Enhanced Performance Analyzer not found, using legacy implementation")
+    except Exception as e:
+        app.logger.error(f"Error using enhanced analyzer: {str(e)}")
+        app.logger.error(traceback.format_exc())
+    
+    # Legacy implementation
     log_path = os.path.join(os.path.dirname(__file__), "order_status_log.txt")
     if not os.path.exists(log_path):
         return jsonify({"performance": {}, "trades": [], "status": "no_file"})

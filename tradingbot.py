@@ -501,60 +501,75 @@ def calculate_indicators(
     data, ema_length, volume_multiplier, trading_start_hour, trading_end_hour
 ):
     try:
-        required_columns = {"close", "high", "low", "volume"}
-        if not required_columns.issubset(data.columns):
-            raise ValueError(
-                f"Data is missing required columns: {required_columns - set(data.columns)}"
-            )
-
-        # Konvertera till float för talib-kompatibilitet
-        for col in ["close", "high", "low", "volume"]:
-            data[col] = data[col].astype(float)
-
-        if data["close"].isnull().all():
-            raise ValueError(
-                "The 'close' column is empty or contains only null values. Cannot calculate EMA."
-            )
-
-        data["ema"] = talib.EMA(data["close"], timeperiod=ema_length)
-        # Compute ATR manually to support small datasets
-        atr_period = min(14, len(data))
-        high_low = data["high"] - data["low"]
-        high_pc = (data["high"] - data["close"].shift()).abs()
-        low_pc = (data["low"] - data["close"].shift()).abs()
-        tr = pd.concat([high_low, high_pc, low_pc], axis=1).max(axis=1)
-        data["atr"] = tr.rolling(window=atr_period, min_periods=1).mean()
-        # Rolling average volume with at least one period for small datasets
-        data["avg_volume"] = data["volume"].rolling(window=20, min_periods=1).mean()
-        data["high_volume"] = data["volume"] > data["avg_volume"] * volume_multiplier
-        data_len = len(data)
-        # RSI requires timeperiod >=2
-        # Calculate RSI safely
-        rsi_period = min(14, data_len - 1) if data_len > 1 else 2
-        try:
-            data["rsi"] = talib.RSI(data["close"], timeperiod=rsi_period)
-        except Exception:
-            data["rsi"] = 0
-        # Fill initial NaN RSI values
-        data["rsi"] = data["rsi"].fillna(0)
-        # Calculate ADX safely
-        adx_period = min(14, data_len - 1) if data_len > 1 else 2
-        try:
-            data["adx"] = talib.ADX(
-                data["high"], data["low"], data["close"], timeperiod=adx_period
-            )
-        except Exception:
-            data["adx"] = 0
-        # Fill initial NaN ADX values
-        data["adx"] = data["adx"].fillna(0)
-        data["hour"] = data["datetime"].dt.hour
-        data["within_trading_hours"] = data["hour"].between(
-            trading_start_hour, trading_end_hour
+        # Import here to avoid circular dependencies
+        from indicators import calculate_all_indicators
+        
+        # Use the enhanced indicators module
+        return calculate_all_indicators(
+            data, 
+            ema_length=ema_length,
+            volume_multiplier=volume_multiplier,
+            trading_start_hour=trading_start_hour,
+            trading_end_hour=trading_end_hour
         )
-        return data
-    except Exception as e:
-        logging.error(f"Error calculating indicators: {e}")
-        return None
+    except ImportError:
+        log.warning("Enhanced indicators module not found, using legacy indicators")
+        # Legacy fallback implementation
+        try:
+            required_columns = {"close", "high", "low", "volume"}
+            if not required_columns.issubset(data.columns):
+                raise ValueError(
+                    f"Data is missing required columns: {required_columns - set(data.columns)}"
+                )
+
+            # Konvertera till float för talib-kompatibilitet
+            for col in ["close", "high", "low", "volume"]:
+                data[col] = data[col].astype(float)
+
+            if data["close"].isnull().all():
+                raise ValueError(
+                    "The 'close' column is empty or contains only null values. Cannot calculate EMA."
+                )
+
+            data["ema"] = talib.EMA(data["close"], timeperiod=ema_length)
+            # Compute ATR manually to support small datasets
+            atr_period = min(14, len(data))
+            high_low = data["high"] - data["low"]
+            high_pc = (data["high"] - data["close"].shift()).abs()
+            low_pc = (data["low"] - data["close"].shift()).abs()
+            tr = pd.concat([high_low, high_pc, low_pc], axis=1).max(axis=1)
+            data["atr"] = tr.rolling(window=atr_period, min_periods=1).mean()
+            # Rolling average volume with at least one period for small datasets
+            data["avg_volume"] = data["volume"].rolling(window=20, min_periods=1).mean()
+            data["high_volume"] = data["volume"] > data["avg_volume"] * volume_multiplier
+            data_len = len(data)
+            # RSI requires timeperiod >=2
+            # Calculate RSI safely
+            rsi_period = min(14, data_len - 1) if data_len > 1 else 2
+            try:
+                data["rsi"] = talib.RSI(data["close"], timeperiod=rsi_period)
+            except Exception:
+                data["rsi"] = 0
+            # Fill initial NaN RSI values
+            data["rsi"] = data["rsi"].fillna(0)
+            # Calculate ADX safely
+            adx_period = min(14, data_len - 1) if data_len > 1 else 2
+            try:
+                data["adx"] = talib.ADX(
+                    data["high"], data["low"], data["close"], timeperiod=adx_period
+                )
+            except Exception:
+                data["adx"] = 0
+            # Fill initial NaN ADX values
+            data["adx"] = data["adx"].fillna(0)
+            data["hour"] = data["datetime"].dt.hour
+            data["within_trading_hours"] = data["hour"].between(
+                trading_start_hour, trading_end_hour
+            )
+            return data
+        except Exception as e:
+            logging.error(f"Error calculating indicators: {e}")
+            return None
 
 
 def detect_fvg(data, lookback, bullish=True):
@@ -1099,6 +1114,7 @@ class TradingStrategy:
         stop_loss_pct,
         take_profit_pct,
         lookback=100,
+        strategy_type="fvg"
     ):
         self.symbol = symbol
         self.ema_length = ema_length
@@ -1111,6 +1127,35 @@ class TradingStrategy:
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         self.lookback = lookback
+        self.strategy_type = strategy_type
+        
+        # Try to import the enhanced strategy module
+        try:
+            from strategy import create_strategy
+            log.info(f"Using enhanced strategy module with strategy type: {strategy_type}")
+            
+            # Create strategy with relevant config
+            self.enhanced_strategy = create_strategy(
+                strategy_type, 
+                symbol,
+                {
+                    'lookback': lookback,
+                    'atr_multiplier': atr_multiplier,
+                    'volume_multiplier': volume_multiplier,
+                    'use_support_resistance': True,
+                    'fast_period': 12,
+                    'slow_period': 26,
+                    'signal_period': 9,
+                    'bb_window': 20,
+                    'bb_std': 2.0,
+                    'rsi_filter': True,
+                    'rsi_upper': 70,
+                    'rsi_lower': 30
+                }
+            )
+        except ImportError:
+            log.warning("Enhanced strategy module not found, using legacy strategy")
+            self.enhanced_strategy = None
 
     def calculate_indicators(self, data):
         return calculate_indicators(
@@ -1130,6 +1175,39 @@ class TradingStrategy:
                 "Data is invalid or empty. Trading strategy cannot be executed."
             )
             return
+        
+        # Try to use enhanced strategy first
+        if self.enhanced_strategy:
+            try:
+                log.info(f"Executing enhanced {self.strategy_type} strategy")
+                signals = self.enhanced_strategy.get_signals(data)
+                if signals is not None and 'signal' in signals.columns:
+                    # Process signals to execute trades
+                    trade_count = 0
+                    daily_loss = 0
+                    
+                    for idx, row in signals.iterrows():
+                        if daily_loss < -self.max_loss or trade_count >= self.max_trades:
+                            break
+                        
+                        if row['signal'] == 1:  # Buy signal
+                            trade_count += 1
+                            sl = row['close'] * (1 - self.stop_loss_pct / 100)
+                            tp = row['close'] * (1 + self.take_profit_pct / 100)
+                            place_order('buy', self.symbol, 0.001, row['close'], sl, tp)
+                            
+                        elif row['signal'] == -1:  # Sell signal
+                            trade_count += 1
+                            sl = row['close'] * (1 + self.stop_loss_pct / 100)
+                            tp = row['close'] * (1 - self.take_profit_pct / 100)
+                            place_order('sell', self.symbol, 0.001, row['close'], sl, tp)
+                    
+                    log.info(f"Enhanced strategy executed with {trade_count} trades")
+                    return  # Successfully used enhanced strategy
+            except Exception as e:
+                log.error(f"Enhanced strategy execution failed: {e}, falling back to legacy strategy")
+        
+        # Legacy strategy implementation (fallback)
         # init counters
         trade_count = 0
         daily_loss = 0

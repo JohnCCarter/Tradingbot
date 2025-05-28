@@ -14,25 +14,27 @@
 - Backtest-funktionalitet
 - Felhantering för ogiltiga symboler och orderproblem
 - Strategi-prestanda-sektion i dashboarden för analys av handelsresultat
+- Förbättrad strategi-prestanda-sektion med detaljerad statistik och visualiseringar
+- Export av statistik till CSV/Excel
+- Avancerade indikatorer (MACD, Bollinger Bands, Support/Resistance)
+- Multiple strategi-alternativ (FVG, MACD, Bollinger Bands, Kombinerad)
 
 ## 🚧 Pågår / Nästa steg
 
-- Förbättrad strategi-prestanda-sektion:
-  - Mer detaljerad statistik och visualiseringar
-  - Förbättrad beräkning av vinst/förlust
-  - Export av statistik till CSV/Excel
 - Förbättrad loggning och debug-funktionalitet:
   - Detaljerad loggning av handelsbeslut
   - Visualisering av specifika felkällor
   - Enkel debug-panel för felsökning
 - Bättre felhantering och loggning i både backend och frontend
 - Visa tydligare felmeddelanden i webbgränssnittet
-- Stöd för fler exchanges (t.ex. Bitfinex ,Binance, Coinbase)
-- Fler indikatorer och strategier (t.ex. MACD, Bollinger Bands)
+- Stöd för fler exchanges (t.ex. Bitfinex, Binance, Coinbase)
 - Lösenordsskydd/adgang till dashboarden
 - Automatiska e-postrapporter om tradingresultat
 - Mobilanpassning av dashboarden
-- dockerisering och möjlighet till molndeployment
+- Dockerisering och möjlighet till molndeployment
+- Integration med externa datakällor för marknadsanalys
+- Risk management-system för automatisk justering av positionsstorlek
+- Automatiserad backtest-jämförelse av olika strategier
 
 ## 🔮 Framtida planer
 
@@ -47,6 +49,10 @@
 - Utökad API-dokumentation för enklare integration
 - Potentiell deployment till molntjänster (Azure, AWS, etc.)
 - Dashboard-applikation för mobiltelefoner
+- Maskininlärningskomponent för prediktion och strategi-optimering
+- Automatiserad optimering av strategi-parametrar
+- Integration med populära handelsplattformar för social trading
+- Handelsbot AI-assistents för förslag och analys
 
 ---
 Uppdatera denna fil löpande när nya funktioner implementeras eller påbörjas.
