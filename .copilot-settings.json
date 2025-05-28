@@ -3,6 +3,7 @@
   "contextGatheringTools": [
     "file_search",
     "grep_search",
-    "read_file"
+    "read_file",
+    "write in swedish"
   ]
 }
