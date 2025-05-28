@@ -11,7 +11,7 @@ dependencies:
   - flake8==7.2.0
   - black==25.1.0
   - pip:
-      - ccxt
+      - ccxt==4.4.85
       - absl-py==2.2.2
       - aiodns==3.2.0
       - aiohappyeyeballs==2.6.1
@@ -85,11 +85,10 @@ dependencies:
       - yarl==1.19.0
       - yfinance==0.2.55
       - zipp==3.21.0
-      - websockets
-      - python-json-logger==3.3.0  # Matchar installerad version
-      - pydantic
-      - prometheus-client
-      # Utvecklingsverktyg installerade i miljön
+      - websockets==11.0.3
+      - python-json-logger==3.3.0
+      - pydantic==1.10.9
+      - prometheus-client==0.16.0
       - autoflake==2.3.1
       - autopep8==2.3.2
       - flask==3.1.0

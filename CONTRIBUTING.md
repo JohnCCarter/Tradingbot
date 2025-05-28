@@ -3,9 +3,11 @@
 Thank you for your interest in contributing to Tradingbot! To ensure a smooth collaboration, please follow these steps:
 
 1. Fork the repository and create a new branch from `main`:
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
+
 2. Follow the project coding style:
    - Run `make format` or `pre-commit` to format code with **black** and **isort**.
    - Ensure **flake8** passes without errors.

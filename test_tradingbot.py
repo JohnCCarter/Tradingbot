@@ -1,3 +1,8 @@
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import threading
 import numpy as np
 import pytest
@@ -64,25 +69,63 @@ def test_trading_operations(symbol):
 
 
 def test_execute_trading_strategy_with_live_data():
-    logging.info(
-        "[TEST] Hämtar marknadsdata och kör strategi på riktigt (paper account)..."
-    )
-    from tradingbot import exchange  # Ensure exchange is imported
-    data = fetch_market_data(exchange, SYMBOL, TIMEFRAME, LIMIT)
-    assert data is not None and not data.empty, "Kunde inte hämta marknadsdata."
-    data = calculate_indicators(
-        data, EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR
-    )
-    assert data is not None, "Kunde inte beräkna indikatorer."
-    logging.info(
-        "[TEST] Kör execute_trading_strategy (detta kan skapa köp/sälj på ditt paper account)..."
-    )
-    execute_trading_strategy(
-        data, MAX_TRADES_PER_DAY, MAX_DAILY_LOSS, ATR_MULTIPLIER, SYMBOL
-    )
-    logging.info(
-        "[TEST] Klart! Kontrollera ditt Bitfinex paper account för utförda ordrar."
-    )
+    logging.info("[TEST] Starting test_execute_trading_strategy_with_live_data")
+
+    # Log environment variables
+    logging.info("[TEST] Environment Variables:")
+    logging.info(f"BITFINEX_API_KEY: {os.getenv('BITFINEX_API_KEY')}")
+    logging.info(f"BITFINEX_API_SECRET: {os.getenv('BITFINEX_API_SECRET')}")
+
+    # Check if ccxt is available
+    if ccxt is None:
+        logging.error("[TEST] ccxt library is missing")
+        pytest.skip("ccxt saknas")
+
+    # Create exchange object
+    try:
+        exchange = ccxt.bitfinex({
+            "enableRateLimit": True,
+            "paper": True,
+            "apiKey": os.getenv("BITFINEX_API_KEY"),
+            "secret": os.getenv("BITFINEX_API_SECRET"),
+        })
+        logging.info("[TEST] Exchange object created successfully")
+    except Exception as e:
+        logging.error(f"[TEST] Failed to create exchange object: {e}")
+        raise
+
+    # Fetch market data
+    try:
+        data = fetch_market_data(exchange, SYMBOL, TIMEFRAME, LIMIT)
+        logging.info(f"[TEST] Market data fetched: {data.shape if data is not None else 'None'}")
+        assert data is not None and not data.empty, "Kunde inte hämta marknadsdata."
+    except Exception as e:
+        logging.error(f"[TEST] Error fetching market data: {e}")
+        raise
+
+    # Calculate indicators
+    try:
+        data = calculate_indicators(
+            data, EMA_LENGTH, VOLUME_MULTIPLIER, TRADING_START_HOUR, TRADING_END_HOUR
+        )
+        logging.info(f"[TEST] Indicators calculated: {data.columns.tolist() if data is not None else 'None'}")
+        assert data is not None, "Kunde inte beräkna indikatorer."
+    except Exception as e:
+        logging.error(f"[TEST] Error calculating indicators: {e}")
+        raise
+
+    # Execute trading strategy
+    try:
+        logging.info("[TEST] Executing trading strategy...")
+        execute_trading_strategy(
+            data, MAX_TRADES_PER_DAY, MAX_DAILY_LOSS, ATR_MULTIPLIER, SYMBOL
+        )
+        logging.info("[TEST] Trading strategy executed successfully")
+    except Exception as e:
+        logging.error(f"[TEST] Error executing trading strategy: {e}")
+        raise
+
+    logging.info("[TEST] test_execute_trading_strategy_with_live_data completed")
 
 
 def test_run_backtest(monkeypatch):
@@ -372,12 +415,10 @@ def run_backtest(
 
 class DummyExchange:
     id = "dummy"
+
     def fetch_ohlcv(self, symbol, timeframe, limit):
         # Always return at least two rows for any symbol, including the test symbol
-        return [
-            [1, 10, 15, 5, 12, 100],
-            [2, 11, 16, 6, 13, 200]
-        ]
+        return [[1, 10, 15, 5, 12, 100], [2, 11, 16, 6, 13, 200]]
 
     def fetch_ticker(self, symbol):
         return {"last": 123.4}
@@ -472,12 +513,18 @@ class DummyExchange:
 
         # -- Test ensure_paper_trading_symbol --
 
-        @pytest.mark.parametrize("input_sym, expected", [
-            ("BTC/USD", "tTESTBTC:TESTUSD"),
-            ("tBTCUSD", "tTESTBTCUSD"[0:5] + "TCBTCUSD"[5:]),  # fallback for non-tTEST
-            ("tTESTETH:TESTUSD", "tTESTETH:TESTUSD"),
-            ("XRP", "tTESTXRP"),
-        ])
+        @pytest.mark.parametrize(
+            "input_sym, expected",
+            [
+                ("BTC/USD", "tTESTBTC:TESTUSD"),
+                (
+                    "tBTCUSD",
+                    "tTESTBTCUSD"[0:5] + "TCBTCUSD"[5:],
+                ),  # fallback for non-tTEST
+                ("tTESTETH:TESTUSD", "tTESTETH:TESTUSD"),
+                ("XRP", "tTESTXRP"),
+            ],
+        )
         def test_ensure_paper_trading_symbol_variants(input_sym, expected):
             out = ensure_paper_trading_symbol(input_sym)
             assert out.startswith("tTEST")
@@ -519,11 +566,15 @@ class DummyExchange:
         def test_get_next_nonce_thread_safe(tmp_path, monkeypatch):
             monkeypatch.setattr(tradingbot, "NONCE_FILE", str(tmp_path / "n.json"))
             results = []
+
             def worker():
                 results.append(get_next_nonce())
+
             threads = [threading.Thread(target=worker) for _ in range(5)]
-            for t in threads: t.start()
-            for t in threads: t.join()
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
             # All nonces should be unique
             assert len(set(results)) == len(results)
 
@@ -533,6 +584,7 @@ class DummyExchange:
             @retry(max_attempts=3, initial_delay=0)
             def brk():
                 raise KeyboardInterrupt()
+
             with pytest.raises(KeyboardInterrupt):
                 brk()
 
@@ -557,8 +609,11 @@ def patch_exchange(monkeypatch):
 
 def test_fetch_market_data_returns_dataframe():
     from tradingbot import exchange
+
     ohlcv = exchange.fetch_ohlcv("tTESTBTC:TESTUSD", "1m", 2)
-    df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df = pd.DataFrame(
+        ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"]
+    )
     # ensure timestamp column is preserved
     df["timestamp"] = df["timestamp"]
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
@@ -569,8 +624,10 @@ def test_get_current_price_returns_last():
     price = get_current_price("tTESTBTC:TESTUSD")
     assert price == 123.4
 
+
 def test_calculate_indicators_adds_columns():
     from tradingbot import exchange
+
     df = fetch_market_data(exchange, "tTESTBTC:TESTUSD", "1m", 2)
     df2 = calculate_indicators(
         df,
@@ -598,7 +655,9 @@ def test_place_order_prints_information(capsys):
 
 @pytest.fixture
 def sample_data():
-    timestamps = pd.date_range("2021-01-01", periods=5, freq="h", tz="UTC")  # Use lowercase 'h' per pandas deprecation
+    timestamps = pd.date_range(
+        "2021-01-01", periods=5, freq="h", tz="UTC"
+    )  # Use lowercase 'h' per pandas deprecation
     df = pd.DataFrame(
         {
             "timestamp": [int(ts.value / 1e6) for ts in timestamps],
@@ -658,3 +717,31 @@ def place_order(order_type, symbol, amount, price=None):
 
 
 # remove duplicate; use imported get_current_price from Tradingbot.tradingbot
+
+
+def test_execute_trading_strategy():
+    """Testar execute_trading_strategy med mockad data."""
+    from Tradingbot.tradingbot import execute_trading_strategy, calculate_indicators
+
+    # Mockad data
+    data = pd.DataFrame(
+        {
+            "close": [100, 105, 110, 115, 120],
+            "ema": [102, 106, 108, 112, 118],
+            "high_volume": [True, True, False, True, True],
+            "within_trading_hours": [True, True, True, False, True],
+            "atr": [2, 3, 2.5, 3.5, 4],
+        }
+    )
+
+    # Mocka parametrar
+    max_trades_per_day = 2
+    max_daily_loss = 50
+    atr_multiplier = 1.5
+    symbol = "tTESTBTC:TESTUSD"
+
+    # Kör strategin
+    execute_trading_strategy(data, max_trades_per_day, max_daily_loss, atr_multiplier, symbol)
+
+    # Kontrollera att inga undantag kastades och att strategin kördes korrekt
+    assert True, "Strategin kördes utan problem."

@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  tradingbot:
+    build:
+      context: .
+      dockerfile: dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - API_KEY=${API_KEY}
+      - API_SECRET=${API_SECRET}
+      - EMAIL_SENDER=${EMAIL_SENDER}
+      - EMAIL_RECEIVER=${EMAIL_RECEIVER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+    volumes:
+      - .:/app
+    command: python tradingbot.py
