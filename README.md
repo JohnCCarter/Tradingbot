@@ -173,21 +173,48 @@
 
 ## Projektstruktur
 
-- Uppdatera projektstruktur för att matcha aktuella filer och mappar
-
 ```plaintext
 Tradingbot/
-├── api.py                    # API-klient och wrapper (om används)
+├── Tradingbot/               # Huvudpaket
+│   ├── __init__.py           # Paketinitiering
+│   ├── api/                  # API-komponenter
+│   │   ├── __init__.py
+│   │   ├── app.py            # Flask app-konfiguration
+│   │   └── routes/           # Routehanterare
+│   │       ├── __init__.py
+│   │       ├── bot_routes.py         # Bot-styrning
+│   │       ├── data_routes.py        # Marknadsdata
+│   │       ├── order_routes.py       # Orderhantering
+│   │       ├── dashboard_routes.py   # Dashboard
+│   │       └── performance_routes.py # Prestanda-analys
+│   ├── core/                 # Kärnfunktionalitet
+│   │   ├── __init__.py
+│   │   ├── bot.py            # TradingBot-klass
+│   │   ├── config.py         # Konfigurationshantering
+│   │   ├── exchange.py       # Börsinteraktioner
+│   │   └── strategy.py       # Handelsstrategier
+│   ├── utils/                # Hjälpfunktioner
+│   │   ├── __init__.py
+│   │   ├── indicators.py     # Tekniska indikatorer
+│   │   └── logging.py        # Loggning
+│   └── data/                 # Datahantering
+│       ├── __init__.py
+│       └── market_data.py    # Marknadsdata
+├── api.py                    # API-huvudskript (äldre)
+├── api_new.py                # API-huvudskript (nyare, modulär)
 ├── config.json               # Konfigurationsparametrar för boten
 ├── dashboard.html            # Enkel HTML-dashboard
 ├── dockerfile                # Docker-konfiguration
 ├── environment.yml           # Conda-miljödefinition
-├── tradingbot.py             # Huvudscript för tradingbot
-├── test_tradingbot.py        # Pytest-tester
+├── tradingbot.py             # Huvudscript för tradingbot (äldre)
+├── tradingbot_new.py         # Huvudscript för tradingbot (nyare, modulär)
+├── test_tradingbot.py        # Äldre Pytest-tester
+├── test_modules.py           # Nyare modultester
 ├── script.sh                 # Installationsscript för ny server/VM
 ├── script_start.sh           # Startscript för daglig drift
 ├── README.md                 # Denna fil
 ├── ROADMAP.md                # Roadmap och TODO-lista
 ├── order_status_log.txt      # Loggfil för orderstatus
-└── __pycache__/              # Kompilerade Python-filer
+├── static/                   # Statiska filer för webb
+└── tests/                    # Övriga tester
 ```
