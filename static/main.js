@@ -29,3 +29,41 @@ window.addEventListener('unhandledrejection', function (event) {
         })
     });
 });
+
+// Debug: Kontrollera att main.js laddas och att knapparna finns
+console.log("main.js loaded");
+
+document.addEventListener('DOMContentLoaded', function () {
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    console.log("startBtn:", startBtn, "stopBtn:", stopBtn);
+
+    if (startBtn) {
+        startBtn.addEventListener('click', function () {
+            console.log("Start button clicked!");
+                        fetch('/start', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('bot-control-status').textContent = 'Bot startad!';
+                })
+                .catch(err => {
+                    document.getElementById('bot-control-status').textContent = 'Fel vid start!';
+                    console.error(err);
+                });
+        });
+    }
+    if (stopBtn) {
+        stopBtn.addEventListener('click', function () {
+            console.log("Stop button clicked!");
+            fetch('/stop', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('bot-control-status').textContent = 'Bot stoppad!';
+                })
+                .catch(err => {
+                    document.getElementById('bot-control-status').textContent = 'Fel vid stopp!';
+                    console.error(err);
+                });
+        });
+    }
+});

@@ -7,11 +7,13 @@ import talib
 import pandas as pd
 import logging
 import json
+from dotenv import load_dotenv
 
+# Sätt sys.path för att möjliggöra import av Tradingbot-moduler
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from Tradingbot import tradingbot  # noqa: E402
-from Tradingbot.tradingbot import (  # noqa: E402
+from Tradingbot.tradingbot import (
     place_order,
     get_current_price,
     calculate_indicators,
@@ -30,6 +32,14 @@ from Tradingbot.tradingbot import (  # noqa: E402
     run_backtest,
     detect_fvg,
 )
+
+# Ladda .env-filen om den finns
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+# Map API_KEY/SECRET till BITFINEX_API_KEY/SECRET om de inte redan är satta
+if os.getenv("API_KEY") and not os.getenv("BITFINEX_API_KEY"):
+    os.environ["BITFINEX_API_KEY"] = os.getenv("API_KEY")
+if os.getenv("API_SECRET") and not os.getenv("BITFINEX_API_SECRET"):
+    os.environ["BITFINEX_API_SECRET"] = os.getenv("API_SECRET")
 
 try:
     import ccxt
@@ -443,7 +453,7 @@ class DummyExchange:
         }
 
     def create_market_sell_order(self, symbol, amount, params=None):
-        from Tradingbot.tradingbot import (
+        from tradingbot import (
             retry,
             get_next_nonce,
             build_auth_message,
@@ -715,12 +725,9 @@ def place_order(order_type, symbol, amount, price=None):
     # ... existing API call logic remains here ...
 
 
-# remove duplicate; use imported get_current_price from Tradingbot.tradingbot
-
-
 def test_execute_trading_strategy():
     """Testar execute_trading_strategy med mockad data."""
-    from Tradingbot.tradingbot import execute_trading_strategy, calculate_indicators
+    from tradingbot import execute_trading_strategy, calculate_indicators
 
     # Mockad data
     data = pd.DataFrame(
@@ -744,3 +751,7 @@ def test_execute_trading_strategy():
 
     # Kontrollera att inga undantag kastades och att strategin kördes korrekt
     assert True, "Strategin kördes utan problem."
+
+if __name__ == "__main__":
+    import pytest
+    pytest.main([__file__])

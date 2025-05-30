@@ -191,3 +191,38 @@ Tradingbot/
 ├── order_status_log.txt      # Loggfil för orderstatus
 └── __pycache__/              # Kompilerade Python-filer
 ```
+
+## Felsökning & Vanliga problem
+
+> **Denna sektion är min personliga felsökningslogg. Här skriver jag kortfattat problem och lösningar för framtida mig själv. Det är ok med punktform, informellt språk och snabba anteckningar!**
+
+### Problem: Tom marknadsdata vid test mot Bitfinex
+
+**Symptom:**
+
+- Testet `test_execute_trading_strategy_with_live_data` misslyckas med felmeddelandet "Kunde inte hämta marknadsdata".
+- Loggar visar att DataFrame är tom efter hämtning av OHLCV-data.
+
+**Orsak:**
+
+- TIMEFRAME i `config.json` var satt till ett värde som Bitfinex inte stöder (t.ex. "35m"). Bitfinex och de flesta börser stöder endast vissa standardintervall, t.ex. "1m", "5m", "15m", "1h" osv.
+
+**Lösning:**
+
+- Ändra TIMEFRAME i `config.json` till ett giltigt värde, t.ex. "1m".
+- Efter ändringen returneras marknadsdata korrekt och testet passerar.
+
+**Exempel på korrekt konfiguration:**
+
+```json
+{
+  ...
+  "TIMEFRAME": "1m",
+  ...
+}
+```
+
+---
+
+> **Notera:**
+> Alla framtida problem och deras lösningar ska dokumenteras i denna sektion i README.md så att felsökning och kunskapsöverföring blir enkel för framtida mig.

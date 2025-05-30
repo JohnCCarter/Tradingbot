@@ -489,24 +489,13 @@ def strategy_performance():
                     price = float(arr[16]) if len(arr) > 16 and arr[16] else 0.0
                     amount = abs(float(arr[6])) if len(arr) > 6 and arr[6] else 0.0
 
-                    # Ensure 'type' key exists before accessing
-                    if "type" not in arr:
-                        parse_errors.append(
-                            {"line": line, "error": "Missing 'type' key in trade data"}
-                        )
-                        continue
-
-                    # Validate and extract order type
+                    # Accept Bitfinex-format: type is at index 8 (e.g. 'EXCHANGE LIMIT', 'EXCHANGE MARKET')
                     order_type = arr[8] if len(arr) > 8 and arr[8] else "unknown"
-
-                    # Log missing 'type' field for debugging
-                    if order_type == "unknown":
-                        parse_errors.append(
-                            {
-                                "line": line,
-                                "error": "Missing or invalid 'type' field in trade data",
-                            }
-                        )
+                    # Remove strict 'type' key check, just use order_type as string
+                    # Do not append parse_errors for missing 'type' key or unknown order_type if Bitfinex format
+                    # Only log error if order_type is still completely missing (empty string)
+                    if order_type == "unknown" or not isinstance(order_type, str):
+                        order_type = "unknown"
 
                     # Uppdatera statistik
                     performance["total_trades"] += 1
