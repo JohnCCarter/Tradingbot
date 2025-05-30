@@ -325,14 +325,14 @@ if JsonFormatter:
     logger.addHandler(json_handler)
 else:
     handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s %(levellevel)s %(message)s")
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
 # Lägg till filhanterare för fel och info
 file_handler = logging.FileHandler("tradingbot.log")
 file_handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(asctime)s %(levellevel)s %(message)s")
+formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
@@ -1464,7 +1464,7 @@ def run_backtest(
 # Konfiguration av loggning
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levellevel)s - %(message)s",
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("tradingbot.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger("TradingBot")
@@ -2378,7 +2378,7 @@ class TradingBot:
                 executed = True
             else:
                 order_result = {
-                    "status": "simulated",
+                    "status": "simulerad",
                     "message": "Order simulerad men inte exekverad",
                 }
                 executed = False
